@@ -14,10 +14,10 @@ jobs:
       - name: Checkout Source Code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js 20
+      - name: Setup Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Install Project Dependencies
         run: |
@@ -32,10 +32,12 @@ jobs:
           npx cap add android || true
           npx cap sync android
 
-      - name: Inject Audio Permissions in AndroidManifest
+      - name: Inject Audio Permissions and Custom Dovashi App Logo
         run: |
           python3 -c "
-          import os
+          import os, shutil
+
+          # 1. Update AndroidManifest.xml
           manifest_path = 'android/app/src/main/AndroidManifest.xml'
           if os.path.exists(manifest_path):
               with open(manifest_path, 'r', encoding='utf-8') as f:
@@ -47,9 +49,21 @@ jobs:
                   with open(manifest_path, 'w', encoding='utf-8') as f:
                       f.write(content)
                   print('Permissions injected successfully')
+
+          # 2. Inject Dovashi Logo Drawables into Android Project
+          res_dir = 'android/app/src/main/res'
+          drawable_dir = os.path.join(res_dir, 'drawable')
+          drawable_v24 = os.path.join(res_dir, 'drawable-v24')
+          os.makedirs(drawable_dir, exist_ok=True)
+          os.makedirs(drawable_v24, exist_ok=True)
+
+          if os.path.exists('assets/ic_launcher_foreground.xml'):
+              shutil.copy('assets/ic_launcher_foreground.xml', os.path.join(drawable_dir, 'ic_launcher_foreground.xml'))
+              shutil.copy('assets/ic_launcher_foreground.xml', os.path.join(drawable_v24, 'ic_launcher_foreground.xml'))
+              print('Copied custom Dovashi icon vector to Android drawable folders')
           "
 
-      - name: Fix Duplicate Kotlin Module Gradle Rule
+      - name: Enable ProGuard / R8 Obfuscation & App Protection
         run: |
           python3 -c "
           import os
@@ -58,6 +72,11 @@ jobs:
               with open(build_gradle, 'r', encoding='utf-8') as f:
                   content = f.read()
               
+              # Enable minifyEnabled and shrinkResources for Release build
+              if 'minifyEnabled false' in content:
+                  content = content.replace('minifyEnabled false', 'minifyEnabled true\n            shrinkResources true')
+              
+              # Exclude duplicate kotlin modules
               exclude_rule = '''
           configurations.all {
               exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk7'
@@ -66,9 +85,27 @@ jobs:
           '''
               if 'kotlin-stdlib-jdk7' not in content:
                   content += exclude_rule
-                  with open(build_gradle, 'w', encoding='utf-8') as f:
-                      f.write(content)
-                  print('Duplicate Kotlin exclusion rule injected successfully')
+
+              with open(build_gradle, 'w', encoding='utf-8') as f:
+                  f.write(content)
+              print('Enabled ProGuard/R8 code protection & obfuscation in build.gradle')
+
+          # Add standard ProGuard security rules for Capacitor
+          proguard_rules = 'android/app/proguard-rules.pro'
+          if os.path.exists(proguard_rules):
+              with open(proguard_rules, 'a', encoding='utf-8') as f:
+                  f.write('''
+          # Dovashi App Security & Anti-Decompile Protection Rules
+          -keepclassmembers class * {
+              @android.webkit.JavascriptInterface <methods>;
+          }
+          -keepattributes *Annotation*,Signature,InnerClasses,EnclosingMethod
+          -dontwarn org.apache.cordova.**
+          -dontwarn com.getcapacitor.**
+          -repackageclasses 'com.dovashi.security'
+          -allowaccessmodification
+          ''')
+              print('Injected ProGuard security rules')
           "
 
       - name: Setup Java JDK 21
@@ -94,7 +131,7 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleRelease
 
-      - name: Sign APK
+      - name: Sign APK with V1, V2, V3 Schemes
         env:
           KEY_ALIAS: ${{ secrets.KEY_ALIAS || 'dovashi' }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD || 'dovashi123' }}
@@ -104,12 +141,15 @@ jobs:
           echo "Found APK at: $APK_PATH"
           
           if [ -f "android/app/release.keystore" ] && [ -f "$APK_PATH" ]; then
-            echo "Signing APK..."
+            echo "Signing APK with full V1, V2, V3 signature protection..."
             $ANDROID_HOME/build-tools/34.0.0/apksigner sign \
               --ks android/app/release.keystore \
               --ks-key-alias "$KEY_ALIAS" \
               --ks-pass "pass:$KEYSTORE_PASSWORD" \
               --key-pass "pass:$KEY_PASSWORD" \
+              --v1-signing-enabled true \
+              --v2-signing-enabled true \
+              --v3-signing-enabled true \
               --out Dovashi-Release.apk \
               "$APK_PATH"
             echo "Signed APK created: Dovashi-Release.apk"

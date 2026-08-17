@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="gradSpine" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#8b5cf6" />
+      <stop offset="35%" stop-color="#6366f1" />
+      <stop offset="70%" stop-color="#06b6d4" />
+      <stop offset="100%" stop-color="#10b981" />
+    </linearGradient>
+    <linearGradient id="gradOuter" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3b82f6" />
+      <stop offset="35%" stop-color="#ec4899" />
+      <stop offset="65%" stop-color="#f97316" />
+      <stop offset="100%" stop-color="#eab308" />
+    </linearGradient>
+    <linearGradient id="gradTopBubble" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#c084fc" />
+      <stop offset="100%" stop-color="#3b82f6" />
+    </linearGradient>
+    <linearGradient id="gradBottomBubble" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#10b981" />
+      <stop offset="100%" stop-color="#eab308" />
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#000000" flood-opacity="0.2" />
+    </filter>
+  </defs>
+
+  <rect width="512" height="512" rx="112" fill="#ffffff" />
+
+  <!-- D Outer Curve -->
+  <path d="M120 70 Q 320 60 410 170 Q 470 260 410 350 Q 330 450 140 450 Q 280 430 350 350 Q 400 280 350 190 Q 280 110 120 70 Z" fill="url(#gradOuter)" filter="url(#shadow)" />
+
+  <!-- D Left Spine -->
+  <path d="M100 70 Q 150 70 150 120 L 150 380 Q 150 440 90 440 Q 80 350 80 200 Q 80 70 100 70 Z" fill="url(#gradSpine)" filter="url(#shadow)" />
+  
+  <!-- Leaf detail on lower left -->
+  <path d="M90 440 C 90 410 130 390 150 360 C 170 410 130 450 90 440 Z" fill="#10b981" />
+
+  <!-- Top Chat Bubble -->
+  <g filter="url(#shadow)">
+    <path d="M160 170 C 160 135 290 135 290 170 C 290 200 250 215 220 220 C 180 225 160 200 160 170 Z" fill="url(#gradTopBubble)" />
+    <circle cx="195" cy="172" r="7" fill="#ffffff" />
+    <circle cx="220" cy="172" r="7" fill="#ffffff" />
+    <circle cx="245" cy="172" r="7" fill="#ffffff" />
+  </g>
+
+  <!-- Bottom Chat Bubble -->
+  <g filter="url(#shadow)">
+    <path d="M160 270 C 160 235 280 235 280 270 C 280 305 240 320 200 320 C 170 320 160 300 160 270 Z" fill="url(#gradBottomBubble)" />
+    <circle cx="195" cy="272" r="7" fill="#0f172a" />
+    <circle cx="220" cy="272" r="7" fill="#0f172a" />
+    <circle cx="245" cy="272" r="7" fill="#0f172a" />
+  </g>
+</svg>

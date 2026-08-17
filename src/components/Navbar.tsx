@@ -28,16 +28,16 @@ export const Navbar: React.FC<NavbarProps> = ({
           onClick={onOpenRoadmap}
           className="flex items-center gap-3 cursor-pointer group select-none"
         >
-          {/* Dovashi Stylized Logo Avatar */}
-          <div className="relative w-11 h-11 rounded-2xl bg-gradient-to-br from-violet-600 via-indigo-500 to-amber-400 p-[2px] shadow-lg shadow-indigo-500/25 group-hover:scale-105 transition-all duration-300">
-            <div className="w-full h-full bg-slate-950 rounded-[14px] flex items-center justify-center relative overflow-hidden">
-              <div className="absolute inset-0 bg-gradient-to-tr from-indigo-500/10 via-transparent to-amber-400/10" />
-              <span className="font-black text-xl bg-gradient-to-r from-violet-400 via-amber-300 to-yellow-200 bg-clip-text text-transparent tracking-tighter">
-                D
-              </span>
-              <span className="absolute bottom-1 right-1 w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-              <span className="absolute bottom-1 right-1 w-2 h-2 rounded-full bg-emerald-500" />
+          {/* Dovashi Official Logo */}
+          <div className="relative w-11 h-11 rounded-2xl p-[2px] bg-gradient-to-br from-violet-600 via-indigo-500 to-amber-400 shadow-lg shadow-indigo-500/25 group-hover:scale-105 transition-all duration-300">
+            <div className="w-full h-full bg-slate-950 rounded-[14px] flex items-center justify-center p-1 overflow-hidden relative">
+              <img 
+                src="/logo.svg" 
+                alt="Dovashi Logo" 
+                className="w-full h-full object-contain"
+              />
             </div>
+            <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 ring-2 ring-slate-950" />
           </div>
 
           <div>
