@@ -58,33 +58,34 @@ export const RoadmapMap: React.FC<RoadmapMapProps> = ({
 
   return (
     <div className="space-y-6 pb-20">
-      {/* Hero Master Key Banner */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 via-indigo-950/80 to-slate-900 border border-indigo-500/20 p-6 sm:p-8 shadow-2xl">
-        <div className="absolute top-0 right-0 -mt-8 -mr-8 w-64 h-64 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute bottom-0 left-0 -mb-8 -ml-8 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+      {/* Hero Dovashi Master Key Banner */}
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-indigo-950/70 to-slate-950 border border-indigo-500/25 p-6 sm:p-8 shadow-2xl backdrop-blur-xl">
+        <div className="absolute top-0 right-0 -mt-12 -mr-12 w-80 h-80 bg-gradient-to-bl from-amber-500/15 via-rose-500/10 to-transparent rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute bottom-0 left-0 -mb-12 -ml-12 w-80 h-80 bg-gradient-to-tr from-violet-600/15 via-indigo-500/10 to-transparent rounded-full blur-3xl pointer-events-none" />
 
         <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-          <div className="space-y-2 max-w-2xl">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-bold tracking-wide">
+          <div className="space-y-3 max-w-2xl">
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-gradient-to-r from-amber-500/15 to-violet-500/15 border border-amber-500/30 text-amber-300 text-xs font-bold tracking-wide">
               <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-              <span>The English Master Key Course • ৩০০টি লেভেল ও স্ট্রাকচার</span>
+              <span>Dovashi (দোভাষী) • ৩০০টি মাস্টার প্যাটার্ন ও এআই লাইভ কোচ</span>
             </div>
-            <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-              প্রতিটি প্যাটার্ন এক-একটি লেভেল — ইংরেজি আয়ত্তের সম্পূর্ণ রোডম্যাপ
+            <h2 className="text-2xl sm:text-4xl font-black text-white tracking-tight leading-tight">
+              ইংরেজি শেখার সবচেয়ে আধুনিক ও ইন্টারেক্টিভ রোডম্যাপ
             </h2>
-            <p className="text-slate-300 text-sm sm:text-base leading-relaxed">
-              বইয়ের প্রতিটি স্ট্রাকচারকে ৫টি ধাপে সাজানো হয়েছে: <strong className="text-amber-300">১. ফর্মুলা ও অর্থ</strong>, <strong className="text-amber-300">২. গ্রামার ব্যাখ্যা</strong>, <strong className="text-amber-300">৩. ১০টি পাওয়ার ভোকাবুলারি</strong>, <strong className="text-amber-300">৪. সেলফ-প্র্যাকটিস ও কুইজ</strong>, এবং <strong className="text-amber-300">৫. রিয়েল-টাইম এআই স্পিকিং কোচ</strong>!
+            <p className="text-slate-300 text-sm sm:text-base leading-relaxed font-['Hind_Siliguri',sans-serif]">
+              প্রতিটি প্যাটার্ন ৫টি পূর্ণাঙ্গ ধাপে সাজানো: <strong className="text-amber-300">১. ফর্মুলা ও অর্থ</strong>, <strong className="text-indigo-300">২. সহজ গ্রামার ব্যাখ্যা</strong>, <strong className="text-emerald-300">৩. পাওয়ার ভোকাবুলারি</strong>, <strong className="text-sky-300">৪. সেলফ-প্র্যাকটিস ও কুইজ</strong>, এবং <strong className="text-rose-300">৫. রিয়েল-টাইম এআই স্পিকিং কল</strong>!
             </p>
           </div>
 
-          <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-4 flex flex-col items-center justify-center min-w-[200px] text-center shadow-lg">
-            <div className="text-3xl font-extrabold text-amber-400">
-              {stats.completedLevelIds.length} <span className="text-sm font-semibold text-slate-400">/ 300</span>
+          <div className="bg-slate-950/90 border border-slate-800/90 rounded-2xl p-5 flex flex-col items-center justify-center min-w-[220px] text-center shadow-xl backdrop-blur-md">
+            <span className="text-[11px] text-slate-400 font-bold uppercase tracking-wider mb-1">সামগ্রিক অগ্রগতি</span>
+            <div className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-amber-300 to-yellow-200">
+              {stats.completedLevelIds.length} <span className="text-base font-bold text-slate-500">/ 300</span>
             </div>
-            <p className="text-xs text-slate-400 font-medium mt-1">লেভেল সম্পন্ন হয়েছে</p>
-            <div className="w-full bg-slate-800 h-2 rounded-full mt-3 overflow-hidden">
+            <p className="text-xs text-slate-400 font-medium mt-1 font-['Hind_Siliguri',sans-serif]">লেভেল সম্পন্ন হয়েছে</p>
+            <div className="w-full bg-slate-900 h-2.5 rounded-full mt-3 overflow-hidden p-[2px] border border-slate-800">
               <div 
-                className="bg-gradient-to-r from-amber-500 to-yellow-400 h-full rounded-full transition-all duration-500"
+                className="bg-gradient-to-r from-amber-500 via-orange-400 to-yellow-400 h-full rounded-full transition-all duration-700 shadow-md shadow-amber-500/30"
                 style={{ width: `${Math.max(3, (stats.completedLevelIds.length / 300) * 100)}%` }}
               />
             </div>

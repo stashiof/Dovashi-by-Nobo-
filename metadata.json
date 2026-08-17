@@ -1,6 +1,6 @@
 {
-  "name": "A-Cat Live Avatar",
-  "description": "The English Master Key: 300 Patterns Mastery Course - Interactive 300 levels of English pattern formulas, grammar nuances, vocabulary spotlight, practice tests, and real-time AI live speaking conversations.",
+  "name": "Dovashi",
+  "description": "Dovashi: Interactive 300 levels of English pattern formulas, grammar nuances, vocabulary spotlight, practice tests, and real-time AI live speaking conversations by Nobo & Fahim Miya.",
   "requestFramePermissions": ["microphone"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
