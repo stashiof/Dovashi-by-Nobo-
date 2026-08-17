@@ -49,6 +49,28 @@ jobs:
                   print('Permissions injected successfully')
           "
 
+      - name: Fix Duplicate Kotlin Module Gradle Rule
+        run: |
+          python3 -c "
+          import os
+          build_gradle = 'android/app/build.gradle'
+          if os.path.exists(build_gradle):
+              with open(build_gradle, 'r', encoding='utf-8') as f:
+                  content = f.read()
+              
+              exclude_rule = '''
+          configurations.all {
+              exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk7'
+              exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk8'
+          }
+          '''
+              if 'kotlin-stdlib-jdk7' not in content:
+                  content += exclude_rule
+                  with open(build_gradle, 'w', encoding='utf-8') as f:
+                      f.write(content)
+                  print('Duplicate Kotlin exclusion rule injected successfully')
+          "
+
       - name: Setup Java JDK 21
         uses: actions/setup-java@v4
         with:
