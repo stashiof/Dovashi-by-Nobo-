@@ -1,0 +1,170 @@
+import fs from 'fs';
+import path from 'path';
+
+console.log('--- Preparing Android Native Files & Assets ---');
+
+// 1. Update AndroidManifest.xml permissions
+const manifestPath = path.resolve('android/app/src/main/AndroidManifest.xml');
+if (fs.existsSync(manifestPath)) {
+  let content = fs.readFileSync(manifestPath, 'utf8');
+  const perms = `    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />`;
+
+  if (!content.includes('android.permission.RECORD_AUDIO')) {
+    content = content.replace('<application', `${perms}\n    <application`);
+    fs.writeFileSync(manifestPath, content, 'utf8');
+    console.log('✓ Injected Audio & Network permissions into AndroidManifest.xml');
+  }
+}
+
+// 2. Create MainActivity.java with Runtime Audio WebChromeClient handler
+const mainActivityDir = path.resolve('android/app/src/main/java/com/nobo/dovashi');
+fs.mkdirSync(mainActivityDir, { recursive: true });
+const mainActivityPath = path.join(mainActivityDir, 'MainActivity.java');
+
+const activityCode = `package com.nobo.dovashi;
+
+import android.Manifest;
+import android.content.pm.PackageManager;
+import android.os.Bundle;
+import android.webkit.PermissionRequest;
+import android.webkit.WebChromeClient;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
+import com.getcapacitor.BridgeActivity;
+
+public class MainActivity extends BridgeActivity {
+    @Override
+    public void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, new String[]{
+                Manifest.permission.RECORD_AUDIO,
+                Manifest.permission.MODIFY_AUDIO_SETTINGS
+            }, 101);
+        }
+    }
+
+    @Override
+    public void onStart() {
+        super.onStart();
+        if (this.bridge != null && this.bridge.getWebView() != null) {
+            this.bridge.getWebView().setWebChromeClient(new WebChromeClient() {
+                @Override
+                public void onPermissionRequest(final PermissionRequest request) {
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            request.grant(request.getResources());
+                        }
+                    });
+                }
+            });
+        }
+    }
+}
+`;
+
+fs.writeFileSync(mainActivityPath, activityCode, 'utf8');
+console.log('✓ Injected runtime audio permission handler into MainActivity.java');
+
+// 3. Inject App Icons into all mipmap folders
+const resDir = path.resolve('android/app/src/main/res');
+
+const densities = [
+  { folder: 'mipmap-mdpi', src: 'assets/icon-48.png' },
+  { folder: 'mipmap-hdpi', src: 'assets/icon-72.png' },
+  { folder: 'mipmap-xhdpi', src: 'assets/icon-96.png' },
+  { folder: 'mipmap-xxhdpi', src: 'assets/icon-144.png' },
+  { folder: 'mipmap-xxxhdpi', src: 'assets/icon-512.png' },
+];
+
+for (const { folder, src } of densities) {
+  const targetDir = path.join(resDir, folder);
+  fs.mkdirSync(targetDir, { recursive: true });
+  const srcPath = path.resolve(src);
+  if (fs.existsSync(srcPath)) {
+    fs.copyFileSync(srcPath, path.join(targetDir, 'ic_launcher.png'));
+    fs.copyFileSync(srcPath, path.join(targetDir, 'ic_launcher_round.png'));
+    fs.copyFileSync(srcPath, path.join(targetDir, 'ic_launcher_foreground.png'));
+    console.log(`✓ Injected icons into ${folder}`);
+  }
+}
+
+// 4. Inject Vector Adaptive Drawables for Android 8+ (API 26+)
+const drawableDir = path.join(resDir, 'drawable');
+const drawableV24Dir = path.join(resDir, 'drawable-v24');
+const anyDpiDir = path.join(resDir, 'mipmap-anydpi-v26');
+
+fs.mkdirSync(drawableDir, { recursive: true });
+fs.mkdirSync(drawableV24Dir, { recursive: true });
+fs.mkdirSync(anyDpiDir, { recursive: true });
+
+const bgXml = path.resolve('assets/ic_launcher_background.xml');
+const fgXml = path.resolve('assets/ic_launcher_foreground.xml');
+
+if (fs.existsSync(bgXml)) {
+  fs.copyFileSync(bgXml, path.join(drawableDir, 'ic_launcher_background.xml'));
+  fs.copyFileSync(bgXml, path.join(drawableV24Dir, 'ic_launcher_background.xml'));
+}
+
+if (fs.existsSync(fgXml)) {
+  fs.copyFileSync(fgXml, path.join(drawableDir, 'ic_launcher_foreground.xml'));
+  fs.copyFileSync(fgXml, path.join(drawableV24Dir, 'ic_launcher_foreground.xml'));
+}
+
+const adaptiveXml = `<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@drawable/ic_launcher_background"/>
+    <foreground android:drawable="@drawable/ic_launcher_foreground"/>
+</adaptive-icon>`;
+
+fs.writeFileSync(path.join(anyDpiDir, 'ic_launcher.xml'), adaptiveXml, 'utf8');
+fs.writeFileSync(path.join(anyDpiDir, 'ic_launcher_round.xml'), adaptiveXml, 'utf8');
+console.log('✓ Configured Adaptive Vector Drawables for modern Android');
+
+// 5. Update build.gradle & Proguard Rules
+const buildGradlePath = path.resolve('android/app/build.gradle');
+if (fs.existsSync(buildGradlePath)) {
+  let gradleContent = fs.readFileSync(buildGradlePath, 'utf8');
+  if (gradleContent.includes('minifyEnabled false')) {
+    gradleContent = gradleContent.replace('minifyEnabled false', 'minifyEnabled true\n            shrinkResources true');
+  }
+  const excludeRule = `
+configurations.all {
+    exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk7'
+    exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk8'
+}
+`;
+  if (!gradleContent.includes('kotlin-stdlib-jdk7')) {
+    gradleContent += excludeRule;
+  }
+  fs.writeFileSync(buildGradlePath, gradleContent, 'utf8');
+  console.log('✓ Updated build.gradle with ProGuard obfuscation & kotlin exclusion');
+}
+
+const proguardRulesPath = path.resolve('android/app/proguard-rules.pro');
+if (fs.existsSync(proguardRulesPath)) {
+  let rules = fs.readFileSync(proguardRulesPath, 'utf8');
+  const securityRules = `
+# Dovashi App Security & Anti-Decompile Protection Rules
+-keepclassmembers class * {
+    @android.webkit.JavascriptInterface <methods>;
+}
+-keepattributes *Annotation*,Signature,InnerClasses,EnclosingMethod
+-dontwarn org.apache.cordova.**
+-dontwarn com.getcapacitor.**
+-repackageclasses 'com.dovashi.security'
+-allowaccessmodification
+`;
+  if (!rules.includes('Dovashi App Security')) {
+    rules += securityRules;
+    fs.writeFileSync(proguardRulesPath, rules, 'utf8');
+    console.log('✓ Injected ProGuard rules');
+  }
+}
+
+console.log('--- Android Preparation Complete Successfully ---');
