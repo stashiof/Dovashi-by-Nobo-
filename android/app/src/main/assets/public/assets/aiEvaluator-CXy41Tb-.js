@@ -1,4 +1,4 @@
-import{G as i}from"./index-1Ggb5Mkd.js";async function l(t,n){const r=new i({apiKey:t}),a=`You are a strict yet encouraging English Grammar and Fluency Evaluator for Bengali learners practicing the English Master Key (300 Speaking Patterns).
+import{G as i}from"./index-DL4P_Eep.js";async function l(t,n){const r=new i({apiKey:t}),a=`You are a strict yet encouraging English Grammar and Fluency Evaluator for Bengali learners practicing the English Master Key (300 Speaking Patterns).
 
 TASK:
 Evaluate if the learner correctly applied the target structure:

@@ -954,7 +954,7 @@ export const LevelLearningView: React.FC<LevelLearningViewProps> = ({
 
                     {/* Live Dialogue Stream Log */}
                     {messages.length > 0 && (
-                      <div className="w-full max-h-48 overflow-y-auto space-y-2.5 p-3 rounded-xl bg-slate-900/90 border border-slate-800 text-left text-xs">
+                      <div className="w-full max-h-56 overflow-y-auto space-y-2.5 p-3 rounded-xl bg-slate-900/90 border border-slate-800 text-left text-xs">
                         {messages.map((m) => (
                           <div
                             key={m.id}
@@ -963,16 +963,25 @@ export const LevelLearningView: React.FC<LevelLearningViewProps> = ({
                             }`}
                           >
                             <div
-                              className={`max-w-[85%] rounded-xl px-3 py-2 ${
+                              className={`max-w-[88%] rounded-xl px-3.5 py-2.5 ${
                                 m.sender === 'user'
                                   ? 'bg-emerald-600/30 border border-emerald-500/40 text-emerald-100 rounded-br-none'
-                                  : 'bg-slate-800/90 border border-slate-700 text-slate-200 rounded-bl-none'
+                                  : 'bg-slate-800/95 border border-slate-700 text-slate-200 rounded-bl-none'
                               }`}
                             >
-                              <div className="text-[10px] font-bold text-slate-400 mb-0.5">
-                                {m.sender === 'user' ? '👤 আপনি' : '🎙️ Air'}
+                              <div className="flex items-center justify-between gap-2 text-[10px] font-bold text-slate-400 mb-1">
+                                <span>{m.sender === 'user' ? '👤 আপনি' : '🎙️ Air (কোচ)'}</span>
+                                {m.sender === 'tutor' && (
+                                  <button
+                                    onClick={() => playEnglishAudio(m.text)}
+                                    className="p-1 rounded bg-slate-700/60 hover:bg-emerald-500/20 text-slate-300 hover:text-emerald-300 transition-colors"
+                                    title="আবার শুনুন"
+                                  >
+                                    <Volume2 className="w-3 h-3" />
+                                  </button>
+                                )}
                               </div>
-                              <p className="leading-relaxed">{m.text}</p>
+                              <p className="leading-relaxed whitespace-pre-wrap">{m.text}</p>
                             </div>
                           </div>
                         ))}
@@ -994,7 +1003,7 @@ export const LevelLearningView: React.FC<LevelLearningViewProps> = ({
                         type="text"
                         value={speakingTextInput}
                         onChange={(e) => setSpeakingTextInput(e.target.value)}
-                        placeholder="মুখে বলুন অথবা এখানে লিখে Send চাপুন..."
+                        placeholder="মুখে কথা বলুন অথবা এখানে লিখে Send চাপুন..."
                         className="flex-1 px-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
                       />
                       <button

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Pattern } from '../types';
 import { getUserApiKey } from '../utils/storage';
-import { GoogleGenAI, Modality, Type } from '@google/genai';
+import { GoogleGenAI, Modality } from '@google/genai';
 
 export interface LiveChatMessage {
   id: string;
@@ -10,10 +10,10 @@ export interface LiveChatMessage {
   timestamp: number;
 }
 
-// Helper: Linear Resampler from hardware sample rate to 16kHz
-function downsampleTo16kHz(buffer: Float32Array, sampleRate: number): Float32Array {
-  if (sampleRate === 16000) return buffer;
-  const ratio = sampleRate / 16000;
+// Resample audio buffer to 16kHz
+function downsampleTo16kHz(buffer: Float32Array, inputSampleRate: number): Float32Array {
+  if (inputSampleRate === 16000) return buffer;
+  const ratio = inputSampleRate / 16000;
   const newLength = Math.round(buffer.length / ratio);
   const result = new Float32Array(newLength);
   let offsetResult = 0;
@@ -33,7 +33,7 @@ function downsampleTo16kHz(buffer: Float32Array, sampleRate: number): Float32Arr
   return result;
 }
 
-// Helper: Convert Float32 [-1, 1] to 16-bit PCM Little Endian ArrayBuffer
+// Convert Float32 [-1, 1] to 16-bit PCM Little-Endian ArrayBuffer
 function floatTo16BitPCM(input: Float32Array): ArrayBuffer {
   const output = new DataView(new ArrayBuffer(input.length * 2));
   for (let i = 0; i < input.length; i++) {
@@ -43,7 +43,7 @@ function floatTo16BitPCM(input: Float32Array): ArrayBuffer {
   return output.buffer;
 }
 
-// Helper: ArrayBuffer to Base64
+// Convert ArrayBuffer to Base64
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   let binary = '';
   const bytes = new Uint8Array(buffer);
@@ -54,7 +54,7 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   return window.btoa(binary);
 }
 
-// Helper: Convert base64 PCM 24kHz to AudioBuffer
+// Convert Base64 24kHz PCM to AudioBuffer
 function base64PcmToAudioBuffer(base64: string, ctx: AudioContext): AudioBuffer {
   const binaryString = window.atob(base64);
   const len = binaryString.length;
@@ -81,8 +81,8 @@ export function useLiveCall(onRequireApiKey?: () => void) {
   const [errorMessage, setErrorMessage] = useState('');
   const [messages, setMessages] = useState<LiveChatMessage[]>([]);
 
-  // Direct Live Session Ref & Audio Nodes
-  const directSessionRef = useRef<any>(null);
+  // Session & Audio Nodes
+  const liveSessionRef = useRef<any>(null);
   const inputAudioCtxRef = useRef<AudioContext | null>(null);
   const outputAudioCtxRef = useRef<AudioContext | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -92,11 +92,13 @@ export function useLiveCall(onRequireApiKey?: () => void) {
   const activeSourcesRef = useRef<AudioBufferSourceNode[]>([]);
   const isAiSpeakingRef = useRef<boolean>(false);
 
-  // Voice Activity & Silence Detection
-  const hadVoiceActivityRef = useRef<boolean>(false);
-  const silenceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // Audio Buffer Accumulator for Voice Utterances
+  const speechPcmChunksRef = useRef<Float32Array[]>([]);
+  const hasSpokenVoiceRef = useRef<boolean>(false);
+  const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isProcessingTurnRef = useRef<boolean>(false);
 
-  // Stop pending audio sources immediately
+  // Stop pending audio sources
   const clearAudioQueue = useCallback(() => {
     activeSourcesRef.current.forEach(source => {
       try {
@@ -111,20 +113,22 @@ export function useLiveCall(onRequireApiKey?: () => void) {
     }
   }, []);
 
+  // Stop the entire call
   const stopCall = useCallback(() => {
     isCallActiveRef.current = false;
+    isProcessingTurnRef.current = false;
     clearAudioQueue();
 
-    if (silenceTimeoutRef.current) {
-      clearTimeout(silenceTimeoutRef.current);
-      silenceTimeoutRef.current = null;
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
     }
 
-    if (directSessionRef.current) {
+    if (liveSessionRef.current) {
       try {
-        directSessionRef.current.close();
+        liveSessionRef.current.close();
       } catch (e) {}
-      directSessionRef.current = null;
+      liveSessionRef.current = null;
     }
 
     if (processorRef.current) {
@@ -155,6 +159,9 @@ export function useLiveCall(onRequireApiKey?: () => void) {
       outputAudioCtxRef.current = null;
     }
 
+    speechPcmChunksRef.current = [];
+    hasSpokenVoiceRef.current = false;
+
     setCallActive(false);
     setConnectionStatus('disconnected');
     setTutorState('idle');
@@ -163,38 +170,98 @@ export function useLiveCall(onRequireApiKey?: () => void) {
     setCurrentSubtitle('');
   }, [clearAudioQueue]);
 
-  // Send spoken or typed text turn to Gemini
-  const submitUserTurn = useCallback((cleanText: string) => {
-    if (!cleanText || !cleanText.trim() || !isCallActiveRef.current) return;
-    const text = cleanText.trim();
-    
-    clearAudioQueue();
-    setCurrentSubtitle(`আপনি: "${text}"`);
+  // Send accumulated voice audio turn to Gemini Live
+  const sendSpokenAudioTurn = useCallback(() => {
+    if (!isCallActiveRef.current || !liveSessionRef.current || speechPcmChunksRef.current.length === 0) {
+      return;
+    }
+
+    // Merge chunks
+    const chunks = speechPcmChunksRef.current;
+    let totalLen = 0;
+    for (const c of chunks) totalLen += c.length;
+
+    if (totalLen < 3200) { // Too short (< 0.2s), ignore noise
+      speechPcmChunksRef.current = [];
+      hasSpokenVoiceRef.current = false;
+      return;
+    }
+
+    const merged = new Float32Array(totalLen);
+    let offset = 0;
+    for (const c of chunks) {
+      merged.set(c, offset);
+      offset += c.length;
+    }
+
+    // Reset accumulator
+    speechPcmChunksRef.current = [];
+    hasSpokenVoiceRef.current = false;
+    isProcessingTurnRef.current = true;
+
     setTutorState('thinking');
     setUserSpeaking(false);
+    setAudioLevel(0.25);
+    setCurrentSubtitle("Air শুনছে ও ভাবছে...");
 
-    setMessages(prev => [
-      ...prev,
-      { id: Date.now().toString(), sender: 'user', text, timestamp: Date.now() }
-    ]);
+    // Convert to 16-bit PCM base64
+    const pcm16 = floatTo16BitPCM(merged);
+    const base64Audio = arrayBufferToBase64(pcm16);
 
-    if (directSessionRef.current) {
-      try {
-        directSessionRef.current.sendClientContent({
-          turns: [{ role: 'user', parts: [{ text }] }],
-          turnComplete: true
-        });
-      } catch (err) {
-        console.error("Failed to send client turn:", err);
-      }
+    try {
+      console.log(`Sending voice turn (${(totalLen / 16000).toFixed(1)}s audio)...`);
+      liveSessionRef.current.sendClientContent({
+        turns: [
+          {
+            role: 'user',
+            parts: [
+              {
+                inlineData: {
+                  mimeType: 'audio/pcm;rate=16000',
+                  data: base64Audio
+                }
+              }
+            ]
+          }
+        ],
+        turnComplete: true
+      });
+    } catch (err) {
+      console.error("Failed to send audio turn to Gemini Live:", err);
+      isProcessingTurnRef.current = false;
+      setTutorState('listening');
     }
-  }, [clearAudioQueue]);
+  }, []);
 
   // Send manual typed message
   const sendManualMessage = useCallback((text: string) => {
-    submitUserTurn(text);
-  }, [submitUserTurn]);
+    if (!text || !text.trim() || !isCallActiveRef.current || !liveSessionRef.current) return;
+    const cleanText = text.trim();
+    
+    clearAudioQueue();
+    setCurrentSubtitle(`আপনি: "${cleanText}"`);
+    setTutorState('thinking');
+    setUserSpeaking(false);
+    isProcessingTurnRef.current = true;
 
+    setMessages(prev => [
+      ...prev,
+      { id: Date.now().toString(), sender: 'user', text: cleanText, timestamp: Date.now() }
+    ]);
+
+    try {
+      liveSessionRef.current.sendClientContent({
+        turns: [{ role: 'user', parts: [{ text: cleanText }] }],
+        turnComplete: true
+      });
+    } catch (err) {
+      console.error("Failed to send client text:", err);
+      isProcessingTurnRef.current = false;
+      setTutorState('listening');
+    }
+  }, [clearAudioQueue]);
+
+  // Start Real-Time Live Conversation (Gemini Live API)
   const startCall = useCallback(async (currentPattern?: Pattern) => {
     try {
       setConnectionStatus('connecting');
@@ -202,45 +269,35 @@ export function useLiveCall(onRequireApiKey?: () => void) {
       setMessages([]);
       isCallActiveRef.current = true;
       isAiSpeakingRef.current = false;
-      hadVoiceActivityRef.current = false;
+      isProcessingTurnRef.current = false;
+      hasSpokenVoiceRef.current = false;
+      speechPcmChunksRef.current = [];
 
       const userApiKey = getUserApiKey();
       if (!userApiKey) {
         if (onRequireApiKey) onRequireApiKey();
         setConnectionStatus('error');
-        setErrorMessage("AI কোচের সাথে লাইভ কথা বলতে অনুগ্রহ করে আপনার Gemini API Key যুক্ত করুন।");
+        setErrorMessage("রিয়েল-টাইম লাইভ কথা বলতে অনুগ্রহ করে আপনার Gemini API Key যুক্ত করুন।");
         isCallActiveRef.current = false;
         return;
       }
 
-      // 1. Initialize Audio Contexts
+      // 1. Audio Contexts Setup (Input: hardware rate resampled to 16kHz, Output: 24kHz)
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      let inputAudioCtx: AudioContext;
-      try {
-        inputAudioCtx = new AudioCtx({ sampleRate: 16000 });
-      } catch (e) {
-        inputAudioCtx = new AudioCtx();
-      }
-
+      const inputAudioCtx = new AudioCtx();
       if (inputAudioCtx.state === 'suspended') {
         await inputAudioCtx.resume();
       }
       inputAudioCtxRef.current = inputAudioCtx;
 
-      let outputAudioCtx: AudioContext;
-      try {
-        outputAudioCtx = new AudioCtx({ sampleRate: 24000 });
-      } catch (e) {
-        outputAudioCtx = new AudioCtx();
-      }
-
+      const outputAudioCtx = new AudioCtx();
       if (outputAudioCtx.state === 'suspended') {
         await outputAudioCtx.resume();
       }
       outputAudioCtxRef.current = outputAudioCtx;
       nextPlayTimeRef.current = outputAudioCtx.currentTime;
 
-      // 2. Microphone Stream with Audio Enhancements
+      // 2. Microphone Stream
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           channelCount: 1,
@@ -254,59 +311,63 @@ export function useLiveCall(onRequireApiKey?: () => void) {
       const pId = currentPattern?.id || 1;
       const struct = currentPattern?.structure || "Subject + want(s) + to + Verb";
       const meaning = currentPattern?.bengaliMeaning || "কেউ কোনো কিছু করতে চায়";
-      const topic = currentPattern?.speakingTask?.topic || currentPattern?.categoryTag || "Daily Life";
-      const sampleEn1 = currentPattern?.sentenceBuilding?.[0]?.en || "I want to learn English";
-      const sampleBn1 = currentPattern?.sentenceBuilding?.[0]?.bn || "আমি ইংরেজি শিখতে চাই";
+      const topic = currentPattern?.speakingTask?.topic || "Daily English Conversation";
+      const sampleEn = currentPattern?.sentenceBuilding?.[0]?.en || "I want to speak in English fluently.";
+      const sampleBn = currentPattern?.sentenceBuilding?.[0]?.bn || "আমি সাবলীলভাবে ইংরেজিতে কথা বলতে চাই।";
 
-      const systemInstruction = `You are "Air", an ultra-interactive, energetic spoken English practice coach and conversation partner on the "Dovashi" app.
-CURRENT PATTERN: Level #${pId} — Structure: "${struct}" (Bengali: "${meaning}").
+      const systemInstruction = `You are "Air", an enthusiastic, ultra-natural spoken English partner and tutor on the "Dovashi" app.
+CURRENT LESSON: Level #${pId} — Structure: "${struct}" (${meaning}).
 TOPIC: "${topic}".
-SAMPLE SENTENCE: "${sampleEn1}" (${sampleBn1}).
+SAMPLE SENTENCE: "${sampleEn}" (${sampleBn}).
 
-CORE RULES:
-1. Speak in clean, natural, enthusiastic spoken English. You may use a few encouraging Bengali words (e.g. "দারুণ!", "খুব সুন্দর!") when motivating.
-2. Keep every turn SHORT and punchy (1-2 sentences maximum). Always ask ONE engaging question to keep the conversation flowing.
-3. If the user makes a grammar mistake with "${struct}", gently guide them with passion and ask them to repeat the correct sentence.
-4. If the user says goodbye or wants to end the call, call the 'hangUpCall' tool.
-5. Provide helpful feedback and actively encourage the user to speak more English.`;
+CONVERSATION PRINCIPLES:
+1. Speak in an authentic, friendly voice just like a real phone call with an English coach.
+2. Keep responses SHORT, spontaneous, and conversational (1-2 sentences maximum per turn) so the user has lots of speaking time.
+3. You can speak primarily in natural English and warmly intersperse encouraging Bengali phrases ("দারুণ!", "খুব সুন্দর!", "বলো আমি শুনছি") just like a native bilingual friend.
+4. If the user makes a grammar mistake with "${struct}", warmly give the correct sentence and ask them to try saying it.
+5. Keep the conversation going by asking an easy question!`;
 
+      // 3. Audio Chunk Playback Function (24kHz PCM from Gemini Live)
       const playAudioChunk = (base64Data: string) => {
         if (!isCallActiveRef.current || !outputAudioCtxRef.current) return;
         const ctx = outputAudioCtxRef.current;
         if (ctx.state === 'suspended') ctx.resume();
 
-        const audioBuf = base64PcmToAudioBuffer(base64Data, ctx);
-        const sourceNode = ctx.createBufferSource();
-        sourceNode.buffer = audioBuf;
-        sourceNode.connect(ctx.destination);
+        try {
+          const audioBuf = base64PcmToAudioBuffer(base64Data, ctx);
+          const sourceNode = ctx.createBufferSource();
+          sourceNode.buffer = audioBuf;
+          sourceNode.connect(ctx.destination);
 
-        const now = ctx.currentTime;
-        if (nextPlayTimeRef.current < now) {
-          nextPlayTimeRef.current = now + 0.015;
-        }
-
-        sourceNode.start(nextPlayTimeRef.current);
-        nextPlayTimeRef.current += audioBuf.duration;
-
-        activeSourcesRef.current.push(sourceNode);
-        isAiSpeakingRef.current = true;
-        setTutorState('speaking');
-        setAudioLevel(0.4 + Math.random() * 0.45);
-
-        sourceNode.onended = () => {
-          activeSourcesRef.current = activeSourcesRef.current.filter(s => s !== sourceNode);
-          if (activeSourcesRef.current.length === 0 && isCallActiveRef.current) {
-            isAiSpeakingRef.current = false;
-            setTutorState('listening');
-            setAudioLevel(0);
+          const now = ctx.currentTime;
+          if (nextPlayTimeRef.current < now) {
+            nextPlayTimeRef.current = now + 0.015;
           }
-        };
+
+          sourceNode.start(nextPlayTimeRef.current);
+          nextPlayTimeRef.current += audioBuf.duration;
+
+          activeSourcesRef.current.push(sourceNode);
+          isAiSpeakingRef.current = true;
+          isProcessingTurnRef.current = false;
+          setTutorState('speaking');
+          setAudioLevel(0.4 + Math.random() * 0.45);
+
+          sourceNode.onended = () => {
+            activeSourcesRef.current = activeSourcesRef.current.filter(s => s !== sourceNode);
+            if (activeSourcesRef.current.length === 0 && isCallActiveRef.current) {
+              isAiSpeakingRef.current = false;
+              setTutorState('listening');
+              setAudioLevel(0);
+            }
+          };
+        } catch (e) {
+          console.error("Audio playback error:", e);
+        }
       };
 
-      // 3. Connect DIRECTLY to Google Gemini Live API
-      console.log("Connecting to Gemini Live API...");
+      // 4. Connect to Gemini Multimodal Live API
       const ai = new GoogleGenAI({ apiKey: userApiKey.trim() });
-
       const session = await ai.live.connect({
         model: 'gemini-3.1-flash-live-preview',
         config: {
@@ -314,86 +375,76 @@ CORE RULES:
           speechConfig: {
             voiceConfig: {
               prebuiltVoiceConfig: {
-                voiceName: 'Puck'
+                voiceName: 'Aoede'
               }
             }
           },
           systemInstruction,
-          tools: [{
-            functionDeclarations: [{
-              name: 'hangUpCall',
-              description: 'Call this function to hang up the phone call when user says goodbye or wants to exit.',
-              parameters: {
-                type: Type.OBJECT,
-                properties: {
-                  farewellMessage: { type: Type.STRING, description: 'Final goodbye sentence' }
-                }
-              }
-            }]
-          }]
+          outputAudioTranscription: {},
+          inputAudioTranscription: {},
         },
         callbacks: {
           onmessage: (msg: any) => {
             if (!isCallActiveRef.current) return;
 
-            // Handle server audio parts
+            // Handle Incoming Live Voice Chunks
             if (msg.serverContent?.modelTurn?.parts) {
               for (const part of msg.serverContent.modelTurn.parts) {
-                if (part.inlineData && part.inlineData.data) {
+                if (part.inlineData?.data) {
                   playAudioChunk(part.inlineData.data);
                 }
-                if (part.text) {
-                  const txt = part.text.trim();
-                  if (!txt.startsWith("**") && !txt.startsWith("Thinking") && !txt.includes("Choosing a Response")) {
-                    setCurrentSubtitle(txt);
-                    setTutorState('speaking');
-                    setMessages(prev => {
-                      const last = prev[prev.length - 1];
-                      if (last && last.sender === 'tutor' && Date.now() - last.timestamp < 3000) {
-                        return [...prev.slice(0, -1), { ...last, text: `${last.text} ${txt}`.trim() }];
-                      }
-                      return [...prev, { id: Date.now().toString(), sender: 'tutor', text: txt, timestamp: Date.now() }];
-                    });
-                  }
-                }
               }
             }
 
-            // Handle Tool Call (Hang up call)
-            if (msg.toolCall?.functionCalls) {
-              for (const call of msg.toolCall.functionCalls) {
-                if (call.name === 'hangUpCall') {
-                  const byeMsg = (call.args as any)?.farewellMessage || "Goodbye! Keep practicing!";
-                  setCurrentSubtitle(byeMsg);
-                  setMessages(prev => [
-                    ...prev,
-                    { id: Date.now().toString(), sender: 'tutor', text: byeMsg, timestamp: Date.now() }
-                  ]);
-                  setTimeout(() => {
-                    stopCall();
-                  }, 2000);
+            // Real-time AI Output Subtitles
+            if (msg.serverContent?.outputTranscription?.text) {
+              const txt = msg.serverContent.outputTranscription.text;
+              setCurrentSubtitle(prev => (prev.startsWith('Air:') ? `${prev} ${txt}` : `Air: ${txt}`));
+              setMessages(prev => {
+                const last = prev[prev.length - 1];
+                if (last && last.sender === 'tutor' && Date.now() - last.timestamp < 3500) {
+                  return [...prev.slice(0, -1), { ...last, text: `${last.text} ${txt}`.trim() }];
                 }
-              }
+                return [...prev, { id: Date.now().toString(), sender: 'tutor', text: txt, timestamp: Date.now() }];
+              });
             }
 
+            // Real-time User Input Transcription
+            if (msg.serverContent?.inputTranscription?.text) {
+              const txt = msg.serverContent.inputTranscription.text;
+              setCurrentSubtitle(`আপনি: "${txt}"`);
+              setMessages(prev => {
+                const last = prev[prev.length - 1];
+                if (last && last.sender === 'user' && Date.now() - last.timestamp < 3000) {
+                  return [...prev.slice(0, -1), { ...last, text: `${last.text} ${txt}`.trim() }];
+                }
+                return [...prev, { id: Date.now().toString(), sender: 'user', text: txt, timestamp: Date.now() }];
+              });
+            }
+
+            // User Interrupted the AI (Barge-in)
             if (msg.serverContent?.interrupted) {
               clearAudioQueue();
               setTutorState('listening');
             }
 
+            // Turn Complete
             if (msg.serverContent?.turnComplete) {
+              isProcessingTurnRef.current = false;
               if (activeSourcesRef.current.length === 0) {
                 isAiSpeakingRef.current = false;
                 setTutorState('listening');
+                setAudioLevel(0);
               }
             }
           },
           onerror: (err: any) => {
-            console.error("Direct Live Error:", err);
-            setErrorMessage(`ত্রুটি: ${err.message || 'কানেকশন ড্রপ করেছে'}`);
+            console.error("Live Session Error:", err);
+            setErrorMessage(`ত্রুটি: ${err.message || 'কানেকশন সমস্যা হয়েছে'}`);
+            isProcessingTurnRef.current = false;
           },
           onclose: () => {
-            console.log("Direct Live Session Closed");
+            console.log("Live Session Closed");
             if (isCallActiveRef.current) {
               stopCall();
             }
@@ -401,25 +452,24 @@ CORE RULES:
         }
       });
 
-      directSessionRef.current = session;
+      liveSessionRef.current = session;
       setConnectionStatus('connected');
       setCallActive(true);
       setTutorState('speaking');
-      setCurrentSubtitle("Air যুক্ত হয়েছে! শুনুন...");
+      setCurrentSubtitle("Air যুক্ত হয়েছে! কথা বলুন...");
 
-      // Send initial greeting trigger
+      // 5. Initial Call Kickoff Greeting
       session.sendClientContent({
         turns: [{
           role: 'user',
           parts: [{
-            text: `[SYSTEM: The user just started the call for Level ${pId} on "${struct}". Give a cheerful 1-sentence welcome in spoken voice and ask your first question!]`
+            text: `[SYSTEM: Start the call for Level ${pId} (${struct}). Say a cheerful, energetic 1-sentence welcome in your natural voice and ask how the user is doing or what they want to practice!]`
           }]
         }],
         turnComplete: true
       });
 
-      // 4. Continuous Audio Input Stream via ScriptProcessor with Hardware Resampling
-      // Single persistent stream without restarting or interrupting the hardware microphone
+      // 6. Direct Continuous Microphone Stream with Smart VAD
       const actualSampleRate = inputAudioCtx.sampleRate || 16000;
       const bufferSize = actualSampleRate >= 44100 ? 4096 : 2048;
       const source = inputAudioCtx.createMediaStreamSource(stream);
@@ -427,72 +477,61 @@ CORE RULES:
       processorRef.current = processor;
 
       processor.onaudioprocess = (e) => {
-        if (!isCallActiveRef.current || !directSessionRef.current) return;
+        if (!isCallActiveRef.current || !liveSessionRef.current) return;
         const inputData = e.inputBuffer.getChannelData(0);
 
+        // Calculate RMS volume level
         let sum = 0;
         for (let i = 0; i < inputData.length; i++) {
           sum += inputData[i] * inputData[i];
         }
         const rms = Math.sqrt(sum / inputData.length);
 
-        if (!isAiSpeakingRef.current) {
-          const hasVoice = rms > 0.015;
+        if (!isAiSpeakingRef.current && !isProcessingTurnRef.current) {
+          const resampled16k = downsampleTo16kHz(inputData, actualSampleRate);
 
-          if (hasVoice) {
+          if (rms > 0.018) {
+            // User is actively speaking
             setUserSpeaking(true);
+            hasSpokenVoiceRef.current = true;
             setAudioLevel(Math.min(1, rms * 6));
             setTutorState('listening');
-            hadVoiceActivityRef.current = true;
 
-            if (silenceTimeoutRef.current) {
-              clearTimeout(silenceTimeoutRef.current);
-              silenceTimeoutRef.current = null;
+            // Accumulate speech PCM audio
+            speechPcmChunksRef.current.push(new Float32Array(resampled16k));
+
+            if (silenceTimerRef.current) {
+              clearTimeout(silenceTimerRef.current);
+              silenceTimerRef.current = null;
             }
           } else {
-            if (hadVoiceActivityRef.current && !silenceTimeoutRef.current) {
-              // User stopped speaking, wait for natural pause then reset speaking flag
-              silenceTimeoutRef.current = setTimeout(() => {
-                setUserSpeaking(false);
-                setAudioLevel(0);
-                hadVoiceActivityRef.current = false;
-                silenceTimeoutRef.current = null;
-              }, 800);
-            } else if (!hadVoiceActivityRef.current) {
+            // User paused / silence
+            if (hasSpokenVoiceRef.current) {
+              // Keep small trailing buffer
+              speechPcmChunksRef.current.push(new Float32Array(resampled16k));
+
+              if (!silenceTimerRef.current) {
+                // When 750ms of silence passes after speaking, trigger the AI turn!
+                silenceTimerRef.current = setTimeout(() => {
+                  setUserSpeaking(false);
+                  setAudioLevel(0);
+                  sendSpokenAudioTurn();
+                  silenceTimerRef.current = null;
+                }, 750);
+              }
+            } else {
               setUserSpeaking(false);
               setAudioLevel(0);
             }
           }
-
-          // Stream continuous 16kHz audio chunk to Gemini Live API
-          const resampled16k = downsampleTo16kHz(inputData, actualSampleRate);
-          const pcm16 = floatTo16BitPCM(resampled16k);
-          const base64Audio = arrayBufferToBase64(pcm16);
-
-          try {
-            directSessionRef.current.sendRealtimeInput([{
-              mimeType: 'audio/pcm;rate=16000',
-              data: base64Audio
-            }]);
-          } catch (e) {}
-
-        } else {
-          // Barge-in Interruption Detection (if user speaks loudly over AI)
-          if (rms > 0.08) {
+        } else if (isAiSpeakingRef.current) {
+          // Barge-in Interruption (if user speaks loudly over AI)
+          if (rms > 0.07) {
             clearAudioQueue();
-            setTutorState('listening');
             setUserSpeaking(true);
-
-            const resampled16k = downsampleTo16kHz(inputData, actualSampleRate);
-            const pcm16 = floatTo16BitPCM(resampled16k);
-            const base64Audio = arrayBufferToBase64(pcm16);
-
-            try {
-              directSessionRef.current.sendRealtimeInput([{
-                mimeType: 'audio/pcm;rate=16000',
-                data: base64Audio
-              }]);
-            } catch (e) {}
+            hasSpokenVoiceRef.current = true;
+            speechPcmChunksRef.current = [new Float32Array(downsampleTo16kHz(inputData, actualSampleRate))];
+            setTutorState('listening');
           }
         }
       };
@@ -503,10 +542,10 @@ CORE RULES:
     } catch (err: any) {
       console.error("Start call error:", err);
       setConnectionStatus('error');
-      setErrorMessage(err.message || "মাইক্রোফোন চালু করতে সমস্যা হয়েছে। ব্রাউজার পারমিশন চেক করুন।");
+      setErrorMessage(err.message || "মাইক্রোফোন চালু করা যায়নি। ব্রাউজার পারমিশন নিশ্চিত করুন।");
       stopCall();
     }
-  }, [clearAudioQueue, onRequireApiKey, stopCall, submitUserTurn]);
+  }, [clearAudioQueue, onRequireApiKey, sendSpokenAudioTurn, stopCall]);
 
   useEffect(() => {
     return () => {
@@ -526,5 +565,6 @@ CORE RULES:
     startCall,
     stopCall,
     sendManualMessage,
+    sendSpokenAudioTurn,
   };
 }
