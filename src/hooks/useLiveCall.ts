@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Pattern } from '../types';
 import { getUserApiKey } from '../utils/storage';
-import { getWebSocketUrl } from '../config';
+import { buildPatternLiveInstruction } from '../utils/aiPrompts';
 
 export function useLiveCall(onRequireApiKey?: () => void) {
   const [callActive, setCallActive] = useState(false);
@@ -164,27 +164,14 @@ export function useLiveCall(onRequireApiKey?: () => void) {
       const pId = currentPattern?.id || 1;
       const struct = currentPattern?.structure || "Subject + want(s) + to + Verb";
       const meaning = currentPattern?.bengaliMeaning || "কেউ কোনো কিছু করতে চায়";
-      const sampleEn = currentPattern?.sentenceBuilding?.[0]?.en || "";
-      const sampleBn = currentPattern?.sentenceBuilding?.[0]?.bn || "";
-      const grammarNote = currentPattern?.grammarCoverage?.[0]?.explanation || "";
-      const powerWord = currentPattern?.vocabularySpotlight?.powerWords?.[0]?.word || "";
-      const topic = currentPattern?.speakingTask?.topic || "Daily Life";
+      const sampleEn = currentPattern?.sentenceBuilding?.[0]?.en || "I want to learn English";
+      const sampleBn = currentPattern?.sentenceBuilding?.[0]?.bn || "আমি ইংরেজি শিখতে চাই";
 
-      const queryParams = new URLSearchParams({
-        apiKey: userApiKey,
-        patternId: String(pId),
-        structure: struct,
-        meaning: meaning,
-        sampleEn1: sampleEn,
-        sampleBn1: sampleBn,
-        grammarNote: grammarNote,
-        powerWord: powerWord,
-        topic: topic,
-      });
+      const systemInstruction = buildPatternLiveInstruction(currentPattern);
 
-      // Construct WS URL using getWebSocketUrl to work seamlessly in web preview and Android APK
-      const baseWsUrl = getWebSocketUrl('/live');
-      const wsUrl = `${baseWsUrl}?${queryParams.toString()}`;
+      // Connect directly to Google's official Gemini Live Multimodal WebSocket Endpoint
+      // This works 100% on both Web and Android APK without requiring a Node server on the phone!
+      const wsUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${encodeURIComponent(userApiKey.trim())}`;
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
@@ -192,9 +179,52 @@ export function useLiveCall(onRequireApiKey?: () => void) {
         if (!isCallActiveRef.current) return;
         setConnectionStatus('connected');
         setCallActive(true);
-        setTutorState('speaking');
-        setCurrentSubtitle("সংযোগ হয়েছে! Air কথা বলছে...");
+        setTutorState('thinking');
+        setCurrentSubtitle("সংযোগ হয়েছে! Air রেডি হচ্ছে...");
 
+        // 1. Send Setup Handshake to Gemini Live
+        const setupMessage = {
+          setup: {
+            model: "models/gemini-2.5-flash-native-audio-latest",
+            generationConfig: {
+              responseModalities: ["AUDIO"],
+              speechConfig: {
+                voiceConfig: {
+                  prebuiltVoiceConfig: {
+                    voiceName: "Puck"
+                  }
+                }
+              }
+            },
+            systemInstruction: {
+              parts: [{ text: systemInstruction }]
+            },
+            tools: [
+              {
+                functionDeclarations: [
+                  {
+                    name: "hangUpCall",
+                    description: "Hang up / disconnect the live audio call immediately when the user explicitly requests to stop practicing, hang up, or says goodbye (e.g. 'কল কেটে দাও', 'আচ্ছা রাখছি', 'আজকের মতো থাক', 'bye Air', 'পরে কথা বলব', 'hang up').",
+                    parameters: {
+                      type: "OBJECT",
+                      properties: {
+                        farewellReason: {
+                          type: "STRING",
+                          description: "A short, friendly, witty goodbye phrase in Bengali before hanging up."
+                        }
+                      },
+                      required: ["farewellReason"]
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        };
+
+        ws.send(JSON.stringify(setupMessage));
+
+        // 2. Start Microphone Audio Capture
         const source = inputCtx.createMediaStreamSource(stream);
         const processor = inputCtx.createScriptProcessor(4096, 1, 1);
         processorRef.current = processor;
@@ -221,7 +251,19 @@ export function useLiveCall(onRequireApiKey?: () => void) {
           if (ws.readyState === WebSocket.OPEN) {
             const pcmBuffer = floatTo16BitPCM(inputData);
             const base64Audio = base64FromArrayBuffer(pcmBuffer);
-            ws.send(JSON.stringify({ audio: base64Audio }));
+            
+            // Standard Gemini Live realtimeInput format
+            const audioPayload = {
+              realtimeInput: {
+                mediaChunks: [
+                  {
+                    mimeType: "audio/pcm;rate=16000",
+                    data: base64Audio
+                  }
+                ]
+              }
+            };
+            ws.send(JSON.stringify(audioPayload));
           }
         };
 
@@ -234,86 +276,134 @@ export function useLiveCall(onRequireApiKey?: () => void) {
         try {
           const msg = JSON.parse(event.data);
 
-          if (msg.requireApiKey || (msg.error && msg.error.includes("API Key"))) {
-            setErrorMessage(msg.error || "Gemini API Key প্রয়োজন।");
-            if (onRequireApiKey) onRequireApiKey();
-            stopCall();
-            return;
-          } else if (msg.error) {
-            console.error("Live API error received from server:", msg.error);
-            setErrorMessage(`Error: ${msg.error}`);
-            stopCall();
+          // A. Setup Complete -> Send Initial Bengali Greeting Trigger
+          if (msg.setupComplete) {
+            setTutorState('speaking');
+            setCurrentSubtitle("Air কথা বলা শুরু করছে...");
+
+            const greetingTrigger = {
+              clientContent: {
+                turns: [
+                  {
+                    role: "user",
+                    parts: [
+                      {
+                        text: `[SYSTEM TRIGGER: The call has just connected. Speak in natural energetic BENGALI with lively storytelling tone.] স্বাগতম জানিয়ে সহজ বাংলায় বুঝিয়ে বলো: "স্বাগতম লেভেল ${pId}-এ! আজকে আমাদের প্যাটার্ন হলো: ${struct} — মানে '${meaning}'। যেমন: '${sampleBn}' = '${sampleEn}'। এবার ধরো তুমি বন্ধুদের সাথে আড্ডায় বসেছ, আর বলতে চাও 'আমি চা খেতে চাই'—এর ইংরেজি কী হবে বলো তো?"`
+                      }
+                    ]
+                  }
+                ],
+                turnComplete: true
+              }
+            };
+            ws.send(JSON.stringify(greetingTrigger));
             return;
           }
 
-          if (msg.interrupted) {
+          // B. Tool Call (Hang Up function)
+          if (msg.toolCall?.functionCalls) {
+            for (const call of msg.toolCall.functionCalls) {
+              if (call.name === "hangUpCall") {
+                const farewell = (call.args as any)?.farewellReason || "আচ্ছা, ঠিক আছে! আজকের মতো রাখছি। খুব ভালো প্র্যাকটিস হলো!";
+                setCurrentSubtitle(farewell);
+                setTutorState('speaking');
+
+                // Send tool response
+                if (ws.readyState === WebSocket.OPEN) {
+                  ws.send(JSON.stringify({
+                    toolResponse: {
+                      functionResponses: [
+                        {
+                          id: call.id,
+                          name: call.name,
+                          response: { output: "Call disconnected." }
+                        }
+                      ]
+                    }
+                  }));
+                }
+
+                setTimeout(() => {
+                  stopCall();
+                }, 2500);
+              }
+            }
+          }
+
+          // C. Interruption Notification
+          if (msg.serverContent?.interrupted) {
             clearAudioQueue();
             setTutorState('listening');
             return;
           }
 
-          if (msg.text) {
-            setCurrentSubtitle(msg.text);
-            setTutorState('speaking');
-            if (subtitleTimeoutRef.current) clearTimeout(subtitleTimeoutRef.current);
-            subtitleTimeoutRef.current = setTimeout(() => {
-              if (isCallActiveRef.current) {
-                setTutorState('listening');
+          // D. Live Audio Output & Subtitle
+          const parts = msg.serverContent?.modelTurn?.parts;
+          if (parts && parts.length > 0) {
+            for (const part of parts) {
+              if (part.text) {
+                setCurrentSubtitle(part.text);
+                setTutorState('speaking');
+                if (subtitleTimeoutRef.current) clearTimeout(subtitleTimeoutRef.current);
+                subtitleTimeoutRef.current = setTimeout(() => {
+                  if (isCallActiveRef.current) {
+                    setTutorState('listening');
+                  }
+                }, 5000);
               }
-            }, 4000);
-          }
 
-          if (msg.audio && outputAudioCtxRef.current) {
-            const outCtx = outputAudioCtxRef.current;
-            const audioBuf = base64ToAudioBuffer(msg.audio, outCtx, 24000);
-            
-            const source = outCtx.createBufferSource();
-            source.buffer = audioBuf;
-            source.connect(outCtx.destination);
+              if (part.inlineData?.data && outputAudioCtxRef.current) {
+                const outCtx = outputAudioCtxRef.current;
+                const audioBuf = base64ToAudioBuffer(part.inlineData.data, outCtx, 24000);
+                
+                const source = outCtx.createBufferSource();
+                source.buffer = audioBuf;
+                source.connect(outCtx.destination);
 
-            const now = outCtx.currentTime;
-            if (nextPlayTimeRef.current < now) {
-              nextPlayTimeRef.current = now;
+                const now = outCtx.currentTime;
+                if (nextPlayTimeRef.current < now) {
+                  nextPlayTimeRef.current = now;
+                }
+
+                source.start(nextPlayTimeRef.current);
+                nextPlayTimeRef.current += audioBuf.duration;
+
+                activeSourcesRef.current.push(source);
+                source.onended = () => {
+                  activeSourcesRef.current = activeSourcesRef.current.filter(s => s !== source);
+                  if (activeSourcesRef.current.length === 0 && isCallActiveRef.current) {
+                    setTutorState('listening');
+                  }
+                };
+
+                setTutorState('speaking');
+                setAudioLevel(0.4 + Math.random() * 0.4);
+              }
             }
-
-            source.start(nextPlayTimeRef.current);
-            nextPlayTimeRef.current += audioBuf.duration;
-
-            activeSourcesRef.current.push(source);
-            source.onended = () => {
-              activeSourcesRef.current = activeSourcesRef.current.filter(s => s !== source);
-              if (activeSourcesRef.current.length === 0 && isCallActiveRef.current) {
-                setTutorState('listening');
-              }
-            };
-
-            setTutorState('speaking');
-            setAudioLevel(0.4 + Math.random() * 0.4);
           }
 
-          if (msg.hangUp) {
-            setCurrentSubtitle(msg.reason || "কথা শেষ! চমৎকার প্র্যাকটিস হলো!");
-            setTimeout(() => {
-              stopCall();
-            }, 2500);
+          // E. Realtime Transcription Text
+          if (msg.serverContent?.outputTranscription?.text) {
+            setCurrentSubtitle(msg.serverContent.outputTranscription.text);
+            setTutorState('speaking');
           }
 
         } catch (e) {
-          console.error("Failed to parse incoming WS message:", e);
+          console.error("Failed to parse incoming Gemini Live message:", e);
         }
       };
 
       ws.onerror = (err) => {
-        console.error("WebSocket error:", err);
+        console.error("Gemini Live WebSocket error:", err);
         setConnectionStatus('error');
-        setErrorMessage("লাইভ অডিও সংযোগে সমস্যা হয়েছে। আবার চেষ্টা করুন।");
+        setErrorMessage("লাইভ অডিও সংযোগে সমস্যা হয়েছে। অনুগ্রহ করে ইন্টারনেট ও Gemini API Key চেক করুন।");
       };
 
       ws.onclose = (e) => {
-        console.log("Live WebSocket closed:", e.code, e.reason);
+        console.log("Gemini Live WebSocket closed:", e.code, e.reason);
         if (isCallActiveRef.current) {
           if (e.code === 1008) {
-            setErrorMessage("Gemini API Key সঠিক নয়। অনুগ্রহ করে সঠিক কি দিন।");
+            setErrorMessage("Gemini API Key সঠিক নয় বা পারমিশন নেই। অনুগ্রহ করে গুগল এআই স্টুডিও থেকে নতুন কি নিন।");
             if (onRequireApiKey) onRequireApiKey();
           }
           stopCall();
@@ -332,7 +422,18 @@ export function useLiveCall(onRequireApiKey?: () => void) {
     if (!callActive || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
       return;
     }
-    wsRef.current.send(JSON.stringify({ text }));
+    const messagePayload = {
+      clientContent: {
+        turns: [
+          {
+            role: "user",
+            parts: [{ text }]
+          }
+        ],
+        turnComplete: true
+      }
+    };
+    wsRef.current.send(JSON.stringify(messagePayload));
   }, [callActive]);
 
   useEffect(() => {
@@ -354,4 +455,5 @@ export function useLiveCall(onRequireApiKey?: () => void) {
     sendManualMessage,
   };
 }
+
 
