@@ -92,11 +92,9 @@ export function useLiveCall(onRequireApiKey?: () => void) {
   const activeSourcesRef = useRef<AudioBufferSourceNode[]>([]);
   const isAiSpeakingRef = useRef<boolean>(false);
 
-  // Speech Recognition Ref
-  const recognitionRef = useRef<any>(null);
-  const currentTranscriptRef = useRef<string>('');
-  const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const isUserSpeakingRef = useRef<boolean>(false);
+  // Voice Activity & Silence Detection
+  const hadVoiceActivityRef = useRef<boolean>(false);
+  const silenceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Stop pending audio sources immediately
   const clearAudioQueue = useCallback(() => {
@@ -117,16 +115,9 @@ export function useLiveCall(onRequireApiKey?: () => void) {
     isCallActiveRef.current = false;
     clearAudioQueue();
 
-    if (silenceTimerRef.current) {
-      clearTimeout(silenceTimerRef.current);
-      silenceTimerRef.current = null;
-    }
-
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.abort();
-      } catch (e) {}
-      recognitionRef.current = null;
+    if (silenceTimeoutRef.current) {
+      clearTimeout(silenceTimeoutRef.current);
+      silenceTimeoutRef.current = null;
     }
 
     if (directSessionRef.current) {
@@ -181,7 +172,6 @@ export function useLiveCall(onRequireApiKey?: () => void) {
     setCurrentSubtitle(`আপনি: "${text}"`);
     setTutorState('thinking');
     setUserSpeaking(false);
-    isUserSpeakingRef.current = false;
 
     setMessages(prev => [
       ...prev,
@@ -212,8 +202,7 @@ export function useLiveCall(onRequireApiKey?: () => void) {
       setMessages([]);
       isCallActiveRef.current = true;
       isAiSpeakingRef.current = false;
-      isUserSpeakingRef.current = false;
-      currentTranscriptRef.current = '';
+      hadVoiceActivityRef.current = false;
 
       const userApiKey = getUserApiKey();
       if (!userApiKey) {
@@ -275,8 +264,8 @@ TOPIC: "${topic}".
 SAMPLE SENTENCE: "${sampleEn1}" (${sampleBn1}).
 
 CORE RULES:
-1. Speak in clean, natural English. You may use a few encouraging Bengali words (e.g. "দারুণ!", "খুব সুন্দর!") when motivating.
-2. Keep every turn SHORT (1-2 sentences maximum). Ask ONE engaging question to keep the conversation flowing.
+1. Speak in clean, natural, enthusiastic spoken English. You may use a few encouraging Bengali words (e.g. "দারুণ!", "খুব সুন্দর!") when motivating.
+2. Keep every turn SHORT and punchy (1-2 sentences maximum). Always ask ONE engaging question to keep the conversation flowing.
 3. If the user makes a grammar mistake with "${struct}", gently guide them with passion and ask them to repeat the correct sentence.
 4. If the user says goodbye or wants to end the call, call the 'hangUpCall' tool.
 5. Provide helpful feedback and actively encourage the user to speak more English.`;
@@ -416,7 +405,7 @@ CORE RULES:
       setConnectionStatus('connected');
       setCallActive(true);
       setTutorState('speaking');
-      setCurrentSubtitle("Air যুক্ত হয়েছে! কথা শুনুন...");
+      setCurrentSubtitle("Air যুক্ত হয়েছে! শুনুন...");
 
       // Send initial greeting trigger
       session.sendClientContent({
@@ -429,73 +418,8 @@ CORE RULES:
         turnComplete: true
       });
 
-      // 4. Parallel On-Device Web Speech Recognition for Ultra-Reliable Spoken Turn Processing
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      if (SpeechRecognition) {
-        try {
-          const recognition = new SpeechRecognition();
-          recognition.continuous = true;
-          recognition.interimResults = true;
-          recognition.lang = 'en-US';
-
-          recognition.onresult = (event: any) => {
-            if (!isCallActiveRef.current) return;
-            
-            let interimTranscript = '';
-            let finalTranscript = '';
-
-            for (let i = event.resultIndex; i < event.results.length; ++i) {
-              if (event.results[i].isFinal) {
-                finalTranscript += event.results[i][0].transcript;
-              } else {
-                interimTranscript += event.results[i][0].transcript;
-              }
-            }
-
-            const spokenText = (finalTranscript || interimTranscript).trim();
-            if (spokenText && !isAiSpeakingRef.current) {
-              currentTranscriptRef.current = spokenText;
-              setCurrentSubtitle(`আপনি: "${spokenText}"`);
-              setUserSpeaking(true);
-              setTutorState('listening');
-              setAudioLevel(0.65);
-
-              // Debounced turn submission on natural pause (750ms)
-              if (silenceTimerRef.current) {
-                clearTimeout(silenceTimerRef.current);
-              }
-
-              silenceTimerRef.current = setTimeout(() => {
-                if (isCallActiveRef.current && currentTranscriptRef.current && !isAiSpeakingRef.current) {
-                  const toSend = currentTranscriptRef.current;
-                  currentTranscriptRef.current = '';
-                  submitUserTurn(toSend);
-                }
-                silenceTimerRef.current = null;
-              }, 750);
-            }
-          };
-
-          recognition.onerror = (e: any) => {
-            console.warn("Speech recognition notice:", e.error);
-          };
-
-          recognition.onend = () => {
-            if (isCallActiveRef.current && recognitionRef.current) {
-              try {
-                recognition.start();
-              } catch (e) {}
-            }
-          };
-
-          recognition.start();
-          recognitionRef.current = recognition;
-        } catch (recErr) {
-          console.warn("Could not start on-device speech recognition:", recErr);
-        }
-      }
-
-      // 5. Continuous Audio Input Stream via ScriptProcessor with Hardware Resampling
+      // 4. Continuous Audio Input Stream via ScriptProcessor with Hardware Resampling
+      // Single persistent stream without restarting or interrupting the hardware microphone
       const actualSampleRate = inputAudioCtx.sampleRate || 16000;
       const bufferSize = actualSampleRate >= 44100 ? 4096 : 2048;
       const source = inputAudioCtx.createMediaStreamSource(stream);
@@ -513,15 +437,31 @@ CORE RULES:
         const rms = Math.sqrt(sum / inputData.length);
 
         if (!isAiSpeakingRef.current) {
-          const hasVoice = rms > 0.012;
+          const hasVoice = rms > 0.015;
 
           if (hasVoice) {
             setUserSpeaking(true);
-            setAudioLevel(Math.min(1, rms * 7));
+            setAudioLevel(Math.min(1, rms * 6));
             setTutorState('listening');
-          } else if (!currentTranscriptRef.current) {
-            setUserSpeaking(false);
-            setAudioLevel(0);
+            hadVoiceActivityRef.current = true;
+
+            if (silenceTimeoutRef.current) {
+              clearTimeout(silenceTimeoutRef.current);
+              silenceTimeoutRef.current = null;
+            }
+          } else {
+            if (hadVoiceActivityRef.current && !silenceTimeoutRef.current) {
+              // User stopped speaking, wait for natural pause then reset speaking flag
+              silenceTimeoutRef.current = setTimeout(() => {
+                setUserSpeaking(false);
+                setAudioLevel(0);
+                hadVoiceActivityRef.current = false;
+                silenceTimeoutRef.current = null;
+              }, 800);
+            } else if (!hadVoiceActivityRef.current) {
+              setUserSpeaking(false);
+              setAudioLevel(0);
+            }
           }
 
           // Stream continuous 16kHz audio chunk to Gemini Live API
@@ -537,7 +477,7 @@ CORE RULES:
           } catch (e) {}
 
         } else {
-          // Barge-in Interruption Detection
+          // Barge-in Interruption Detection (if user speaks loudly over AI)
           if (rms > 0.08) {
             clearAudioQueue();
             setTutorState('listening');
