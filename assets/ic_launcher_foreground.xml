@@ -3,88 +3,93 @@
     xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
-    android:viewportWidth="512"
-    android:viewportHeight="512">
+    android:viewportWidth="768"
+    android:viewportHeight="768">
 
-    <!-- Left Bubble (Voice Input) -->
-    <path
-        android:pathData="M140,140 H300 A40,40 0 0,1 340,180 V280 A40,40 0 0,1 300,320 H220 L140,380 V320 H140 A40,40 0 0,1 100,280 V180 A40,40 0 0,1 140,140 Z">
-        <aapt:attr name="android:fillColor">
-            <gradient
-                android:startX="100"
-                android:startY="140"
-                android:endX="340"
-                android:endY="380"
-                android:type="linear">
-                <item android:offset="0.0" android:color="#FF2563EB" />
-                <item android:offset="1.0" android:color="#FF8B5CF6" />
-            </gradient>
-        </aapt:attr>
-    </path>
+    <group
+        android:translateX="128"
+        android:translateY="128">
 
-    <!-- Right Bubble (AI Output) with subtle shadow layer -->
-    <!-- Shadow -->
-    <path
-        android:pathData="M246,208 H366 A40,40 0 0,1 406,248 V348 A40,40 0 0,1 366,388 H326 V448 L246,388 H246 A40,40 0 0,1 206,348 V248 A40,40 0 0,1 246,208 Z"
-        android:fillColor="#33000000" />
+        <!-- Left Bubble (Voice Input) -->
+        <path
+            android:pathData="M140,140 H300 A40,40 0 0,1 340,180 V280 A40,40 0 0,1 300,320 H220 L140,380 V320 H140 A40,40 0 0,1 100,280 V180 A40,40 0 0,1 140,140 Z">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:startX="100"
+                    android:startY="140"
+                    android:endX="340"
+                    android:endY="380"
+                    android:type="linear">
+                    <item android:offset="0.0" android:color="#FF2563EB" />
+                    <item android:offset="1.0" android:color="#FF8B5CF6" />
+                </gradient>
+            </aapt:attr>
+        </path>
 
-    <!-- Right Bubble Body -->
-    <path
-        android:pathData="M250,200 H370 A40,40 0 0,1 410,240 V340 A40,40 0 0,1 370,380 H330 V440 L250,380 H250 A40,40 0 0,1 210,340 V240 A40,40 0 0,1 250,200 Z">
-        <aapt:attr name="android:fillColor">
-            <gradient
-                android:startX="210"
-                android:startY="200"
-                android:endX="410"
-                android:endY="440"
-                android:type="linear">
-                <item android:offset="0.0" android:color="#FFEC4899" />
-                <item android:offset="1.0" android:color="#FFF97316" />
-            </gradient>
-        </aapt:attr>
-    </path>
+        <!-- Right Bubble (AI Output) with subtle shadow layer -->
+        <!-- Shadow -->
+        <path
+            android:pathData="M246,208 H366 A40,40 0 0,1 406,248 V348 A40,40 0 0,1 366,388 H326 V448 L246,388 H246 A40,40 0 0,1 206,348 V248 A40,40 0 0,1 246,208 Z"
+            android:fillColor="#33000000" />
 
-    <!-- Audio Wave lines in Left Bubble (Green) -->
-    <path
-        android:pathData="M170,210 L170,230"
-        android:strokeWidth="12"
-        android:strokeColor="#FF10B981"
-        android:strokeLineCap="round" />
-    <path
-        android:pathData="M195,180 L195,260"
-        android:strokeWidth="12"
-        android:strokeColor="#FF10B981"
-        android:strokeLineCap="round" />
-    <path
-        android:pathData="M220,160 L220,280"
-        android:strokeWidth="12"
-        android:strokeColor="#FF10B981"
-        android:strokeLineCap="round" />
-    <path
-        android:pathData="M245,190 L245,250"
-        android:strokeWidth="12"
-        android:strokeColor="#FF10B981"
-        android:strokeLineCap="round" />
+        <!-- Right Bubble Body -->
+        <path
+            android:pathData="M250,200 H370 A40,40 0 0,1 410,240 V340 A40,40 0 0,1 370,380 H330 V440 L250,380 H250 A40,40 0 0,1 210,340 V240 A40,40 0 0,1 250,200 Z">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:startX="210"
+                    android:startY="200"
+                    android:endX="410"
+                    android:endY="440"
+                    android:type="linear">
+                    <item android:offset="0.0" android:color="#FFEC4899" />
+                    <item android:offset="1.0" android:color="#FFF97316" />
+                </gradient>
+            </aapt:attr>
+        </path>
 
-    <!-- Translated text lines in Right Bubble (Purple) -->
-    <path
-        android:pathData="M260,290 L350,290"
-        android:strokeWidth="14"
-        android:strokeColor="#FF8B5CF6"
-        android:strokeLineCap="round" />
-    <path
-        android:pathData="M260,325 L310,325"
-        android:strokeWidth="14"
-        android:strokeColor="#FF8B5CF6"
-        android:strokeLineCap="round" />
+        <!-- Audio Wave lines in Left Bubble (Green) -->
+        <path
+            android:pathData="M170,210 L170,230"
+            android:strokeWidth="12"
+            android:strokeColor="#FF10B981"
+            android:strokeLineCap="round" />
+        <path
+            android:pathData="M195,180 L195,260"
+            android:strokeWidth="12"
+            android:strokeColor="#FF10B981"
+            android:strokeLineCap="round" />
+        <path
+            android:pathData="M220,160 L220,280"
+            android:strokeWidth="12"
+            android:strokeColor="#FF10B981"
+            android:strokeLineCap="round" />
+        <path
+            android:pathData="M245,190 L245,250"
+            android:strokeWidth="12"
+            android:strokeColor="#FF10B981"
+            android:strokeLineCap="round" />
 
-    <!-- Big AI Sparkle (Green) -->
-    <path
-        android:pathData="M350,230 Q350,250 370,250 Q350,250 350,270 Q350,250 330,250 Q350,250 350,230 Z"
-        android:fillColor="#FF10B981" />
+        <!-- Translated text lines in Right Bubble (Purple) -->
+        <path
+            android:pathData="M260,290 L350,290"
+            android:strokeWidth="14"
+            android:strokeColor="#FF8B5CF6"
+            android:strokeLineCap="round" />
+        <path
+            android:pathData="M260,325 L310,325"
+            android:strokeWidth="14"
+            android:strokeColor="#FF8B5CF6"
+            android:strokeLineCap="round" />
 
-    <!-- Small AI Sparkle (Purple) -->
-    <path
-        android:pathData="M320,220 Q320,230 330,230 Q320,230 320,240 Q320,230 310,230 Q320,230 320,220 Z"
-        android:fillColor="#FF8B5CF6" />
+        <!-- Big AI Sparkle (Green) -->
+        <path
+            android:pathData="M350,230 Q350,250 370,250 Q350,250 350,270 Q350,250 330,250 Q350,250 350,230 Z"
+            android:fillColor="#FF10B981" />
+
+        <!-- Small AI Sparkle (Purple) -->
+        <path
+            android:pathData="M320,220 Q320,230 330,230 Q320,230 320,240 Q320,230 310,230 Q320,230 320,220 Z"
+            android:fillColor="#FF8B5CF6" />
+    </group>
 </vector>

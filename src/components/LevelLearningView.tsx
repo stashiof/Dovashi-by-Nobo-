@@ -106,7 +106,8 @@ export const LevelLearningView: React.FC<LevelLearningViewProps> = ({
 
     setEvaluatingMap(prev => ({ ...prev, [practiceId]: true }));
     try {
-      const res = await fetch('/api/evaluate-sentence', {
+      const { getApiUrl } = await import('../config');
+      const res = await fetch(getApiUrl('/api/evaluate-sentence'), {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',

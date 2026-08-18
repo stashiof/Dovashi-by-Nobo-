@@ -250,16 +250,6 @@ export function useLiveCall(onRequireApiKey?: () => void) {
       processor.connect(inputCtx.destination);
 
       // Connect WebSocket to Gemini Live with pattern context and user apiKey
-      const isMobileApp = window.location.protocol === 'file:' || 
-                          window.location.protocol.startsWith('capacitor') || 
-                          window.location.protocol.startsWith('ionic');
-      
-      const serverHost = isMobileApp 
-        ? ((import.meta as any).env?.VITE_BACKEND_HOST || 'ais-pre-fo3owuqjpczzsi5hj5eyh3-348785349910.asia-southeast1.run.app')
-        : window.location.host;
-
-      const protocol = (window.location.protocol === 'https:' || isMobileApp) ? 'wss:' : 'ws:';
-      
       const queryParams = new URLSearchParams({
         apiKey: userApiKey
       });
@@ -278,7 +268,8 @@ export function useLiveCall(onRequireApiKey?: () => void) {
         queryParams.set('grammarNote', currentPattern.grammarCoverage?.[0]?.explanation || '');
       }
 
-      const wsUrl = `${protocol}//${serverHost}/live?${queryParams.toString()}`;
+      const { BACKEND_WS_URL } = await import('../config');
+      const wsUrl = `${BACKEND_WS_URL}/live?${queryParams.toString()}`;
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 

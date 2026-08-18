@@ -49,7 +49,8 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
     setStatusMessage('');
 
     try {
-      const res = await fetch('/api/verify-key', {
+      const { getApiUrl } = await import('../config');
+      const res = await fetch(getApiUrl('/api/verify-key'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ apiKey: trimmed })
