@@ -1,15 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Pattern } from '../types';
 import { getUserApiKey } from '../utils/storage';
-import { GoogleGenAI } from '@google/genai';
-
-interface ChatMessage {
-  role: 'user' | 'model';
-  text: string;
-}
-
-// Global reference to prevent Android Chrome SpeechSynthesis garbage collection bug
-let activeUtterance: SpeechSynthesisUtterance | null = null;
+import { getWebSocketUrl } from '../config';
 
 export function useLiveCall(onRequireApiKey?: () => void) {
   const [callActive, setCallActive] = useState(false);
@@ -20,78 +12,110 @@ export function useLiveCall(onRequireApiKey?: () => void) {
   const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected' | 'error'>('disconnected');
   const [errorMessage, setErrorMessage] = useState('');
 
-  const isCallActiveRef = useRef<boolean>(false);
-  const recognitionRef = useRef<any>(null);
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
+  const inputAudioCtxRef = useRef<AudioContext | null>(null);
+  const outputAudioCtxRef = useRef<AudioContext | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
-  const animFrameRef = useRef<number | null>(null);
-  const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const speechSafetyTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const waveIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const chatHistoryRef = useRef<ChatMessage[]>([]);
-  const currentPatternRef = useRef<Pattern | null>(null);
-  const isGeneratingRef = useRef<boolean>(false);
-  const lastSpokenTextRef = useRef<string>('');
+  const processorRef = useRef<ScriptProcessorNode | null>(null);
+  const nextPlayTimeRef = useRef<number>(0);
+  const activeSourcesRef = useRef<AudioBufferSourceNode[]>([]);
+  const isCallActiveRef = useRef<boolean>(false);
+  const subtitleTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Clean up all resources
+  function floatTo16BitPCM(input: Float32Array): ArrayBuffer {
+    const output = new DataView(new ArrayBuffer(input.length * 2));
+    for (let i = 0; i < input.length; i++) {
+      const s = Math.max(-1, Math.min(1, input[i]));
+      output.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+    }
+    return output.buffer;
+  }
+
+  function base64FromArrayBuffer(arrayBuffer: ArrayBuffer): string {
+    let binary = '';
+    const bytes = new Uint8Array(arrayBuffer);
+    const len = bytes.byteLength;
+    for (let i = 0; i < len; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return window.btoa(binary);
+  }
+
+  function base64ToAudioBuffer(
+    base64: string,
+    ctx: AudioContext,
+    sampleRate = 24000
+  ): AudioBuffer {
+    const binaryString = window.atob(base64);
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    const int16Array = new Int16Array(bytes.buffer);
+    const audioBuffer = ctx.createBuffer(1, int16Array.length, sampleRate);
+    const channelData = audioBuffer.getChannelData(0);
+    for (let i = 0; i < int16Array.length; i++) {
+      channelData[i] = int16Array[i] / 32768.0;
+    }
+    return audioBuffer;
+  }
+
+  const clearAudioQueue = useCallback(() => {
+    activeSourcesRef.current.forEach(source => {
+      try {
+        source.stop();
+        source.disconnect();
+      } catch (e) {}
+    });
+    activeSourcesRef.current = [];
+    if (outputAudioCtxRef.current) {
+      nextPlayTimeRef.current = outputAudioCtxRef.current.currentTime;
+    }
+  }, []);
+
   const stopCall = useCallback(() => {
     isCallActiveRef.current = false;
-    isGeneratingRef.current = false;
+    clearAudioQueue();
 
-    // Stop speech recognition
-    if (recognitionRef.current) {
+    if (wsRef.current) {
       try {
-        recognitionRef.current.onend = null;
-        recognitionRef.current.onerror = null;
-        recognitionRef.current.abort();
+        wsRef.current.close(1000, "User disconnected");
       } catch (e) {}
-      recognitionRef.current = null;
+      wsRef.current = null;
     }
 
-    // Stop speech synthesis
-    if ('speechSynthesis' in window) {
+    if (processorRef.current) {
       try {
-        window.speechSynthesis.cancel();
+        processorRef.current.disconnect();
       } catch (e) {}
-    }
-    activeUtterance = null;
-
-    if (waveIntervalRef.current) {
-      clearInterval(waveIntervalRef.current);
-      waveIntervalRef.current = null;
+      processorRef.current = null;
     }
 
-    if (speechSafetyTimerRef.current) {
-      clearTimeout(speechSafetyTimerRef.current);
-      speechSafetyTimerRef.current = null;
-    }
-
-    if (silenceTimerRef.current) {
-      clearTimeout(silenceTimerRef.current);
-      silenceTimerRef.current = null;
-    }
-
-    // Stop audio animation
-    if (animFrameRef.current) {
-      cancelAnimationFrame(animFrameRef.current);
-      animFrameRef.current = null;
-    }
-
-    // Stop mic stream
     if (mediaStreamRef.current) {
       try {
-        mediaStreamRef.current.getTracks().forEach(t => t.stop());
+        mediaStreamRef.current.getTracks().forEach(track => track.stop());
       } catch (e) {}
       mediaStreamRef.current = null;
     }
 
-    // Close AudioContext
-    if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
+    if (inputAudioCtxRef.current && inputAudioCtxRef.current.state !== 'closed') {
       try {
-        audioCtxRef.current.close().catch(() => {});
+        inputAudioCtxRef.current.close().catch(() => {});
       } catch (e) {}
-      audioCtxRef.current = null;
+      inputAudioCtxRef.current = null;
+    }
+
+    if (outputAudioCtxRef.current && outputAudioCtxRef.current.state !== 'closed') {
+      try {
+        outputAudioCtxRef.current.close().catch(() => {});
+      } catch (e) {}
+      outputAudioCtxRef.current = null;
+    }
+
+    if (subtitleTimeoutRef.current) {
+      clearTimeout(subtitleTimeoutRef.current);
+      subtitleTimeoutRef.current = null;
     }
 
     setCallActive(false);
@@ -100,278 +124,8 @@ export function useLiveCall(onRequireApiKey?: () => void) {
     setAudioLevel(0);
     setUserSpeaking(false);
     setCurrentSubtitle('');
-  }, []);
+  }, [clearAudioQueue]);
 
-  // Text to Speech with Android fix & safety watchdog
-  const speakText = useCallback((textToSpeak: string, onEndCallback?: () => void) => {
-    if (!isCallActiveRef.current) return;
-
-    // Clean any hangup tags from speech
-    const cleanSpeech = textToSpeak.replace(/\[HANGUP\]/gi, '').trim();
-    if (!cleanSpeech) {
-      if (onEndCallback) onEndCallback();
-      return;
-    }
-
-    setTutorState('speaking');
-    setCurrentSubtitle(cleanSpeech);
-
-    let finished = false;
-    const finishSpeech = () => {
-      if (finished) return;
-      finished = true;
-      if (speechSafetyTimerRef.current) {
-        clearTimeout(speechSafetyTimerRef.current);
-        speechSafetyTimerRef.current = null;
-      }
-      if (waveIntervalRef.current) {
-        clearInterval(waveIntervalRef.current);
-        waveIntervalRef.current = null;
-      }
-      setAudioLevel(0);
-      activeUtterance = null;
-      if (isCallActiveRef.current && onEndCallback) {
-        onEndCallback();
-      }
-    };
-
-    // Calculate approximate speaking duration for safety fallback (average 15 chars per sec)
-    const expectedDurationMs = Math.max(2500, Math.min(15000, cleanSpeech.length * 85));
-    if (speechSafetyTimerRef.current) clearTimeout(speechSafetyTimerRef.current);
-    speechSafetyTimerRef.current = setTimeout(() => {
-      finishSpeech();
-    }, expectedDurationMs + 1000);
-
-    if (!('speechSynthesis' in window)) {
-      return;
-    }
-
-    try {
-      window.speechSynthesis.cancel();
-      window.speechSynthesis.resume();
-
-      const utterance = new SpeechSynthesisUtterance(cleanSpeech);
-      activeUtterance = utterance; // Prevent garbage collection bug
-      
-      const voices = window.speechSynthesis.getVoices();
-      const englishVoice = voices.find(v => v.lang.startsWith('en') && (v.name.includes('Natural') || v.name.includes('Google') || v.name.includes('Samantha') || v.name.includes('Female')));
-      if (englishVoice) {
-        utterance.voice = englishVoice;
-      }
-      
-      utterance.rate = 0.95;
-      utterance.pitch = 1.05;
-
-      // Animate waveform during voice
-      if (waveIntervalRef.current) clearInterval(waveIntervalRef.current);
-      waveIntervalRef.current = setInterval(() => {
-        if (isCallActiveRef.current) {
-          setAudioLevel(0.3 + Math.random() * 0.5);
-        }
-      }, 150);
-
-      utterance.onend = () => {
-        finishSpeech();
-      };
-
-      utterance.onerror = (e) => {
-        console.warn("Speech synthesis error, finishing speech safely:", e);
-        finishSpeech();
-      };
-
-      window.speechSynthesis.speak(utterance);
-    } catch (e) {
-      console.warn("Speech synthesis exception:", e);
-      finishSpeech();
-    }
-  }, []);
-
-  // Send user message to Gemini and speak response
-  const sendToGemini = useCallback(async (userText: string) => {
-    if (!isCallActiveRef.current || isGeneratingRef.current) return;
-    isGeneratingRef.current = true;
-
-    setTutorState('thinking');
-    setCurrentSubtitle(`আপনি: "${userText}" \n\nAir ভাবছে ও উত্তর তৈরি করছে...`);
-
-    const userApiKey = getUserApiKey();
-    if (!userApiKey) {
-      if (onRequireApiKey) onRequireApiKey();
-      setErrorMessage("Gemini API Key প্রয়োজন।");
-      isGeneratingRef.current = false;
-      return;
-    }
-
-    const pattern = currentPatternRef.current;
-    const pId = pattern?.id || 1;
-    const struct = pattern?.structure || "Subject + want(s) + to + Verb";
-    const meaning = pattern?.bengaliMeaning || "কেউ কোনো কিছু করতে চায়";
-    const sampleEn = pattern?.sentenceBuilding?.[0]?.en || "I want to learn English";
-    const powerWord = pattern?.vocabularySpotlight?.powerWords?.[0]?.word || "";
-    const topic = pattern?.speakingTask?.topic || "Daily Life";
-    const grammarRule = pattern?.grammarCoverage?.[0]?.explanation || "";
-
-    // Add user message to history
-    chatHistoryRef.current.push({ role: 'user', text: userText });
-
-    const systemPrompt = `You are "Air" (এয়ার), an energetic, friendly, and bilingual (Bengali + English) English speaking tutor in Dovashi (দোভাষী) app.
-Current lesson:
-- Level ${pId} Pattern: ${struct} (${meaning})
-- Key vocabulary: ${powerWord}
-- Grammar note: ${grammarRule}
-- Context/Topic: ${topic}
-- Sample Sentence: "${sampleEn}"
-
-Goal:
-1. Speak in a natural, warm, conversational tone (mix of cheerful Bengali guidance and clear English sentences).
-2. Keep your response very concise (1-2 sentences maximum) so the conversation is lively and engaging.
-3. If the user made any grammatical mistakes regarding "${struct}", gently explain the fix in 1 simple sentence.
-4. If they spoke well, give energetic praise!
-5. Always end with a short follow-up question or sentence prompt for the user.
-6. If user wants to end the conversation (e.g. says "রাখছি", "আজকের মতো থাক", "বাই", "bye", "goodbye"), say a warm goodbye and append [HANGUP] at the end.`;
-
-    try {
-      const ai = new GoogleGenAI({ apiKey: userApiKey });
-      
-      const contents = [
-        { role: 'user', parts: [{ text: systemPrompt }] },
-        ...chatHistoryRef.current.map(msg => ({
-          role: msg.role === 'user' ? 'user' : 'model',
-          parts: [{ text: msg.text }]
-        }))
-      ];
-
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: contents as any,
-        config: {
-          temperature: 0.7,
-          maxOutputTokens: 140,
-        }
-      });
-
-      const reply = response.text?.trim() || `Great job! Now try saying: "${sampleEn}"`;
-      chatHistoryRef.current.push({ role: 'model', text: reply });
-      isGeneratingRef.current = false;
-
-      const shouldHangup = reply.includes('[HANGUP]');
-
-      speakText(reply, () => {
-        if (shouldHangup) {
-          setTimeout(() => {
-            stopCall();
-          }, 1500);
-        } else {
-          setTutorState('listening');
-          startListening();
-        }
-      });
-
-    } catch (err: any) {
-      console.error("Gemini Live response error:", err);
-      isGeneratingRef.current = false;
-      const msg = err.message || "";
-      if (msg.includes("API key not valid") || msg.includes("API_KEY_INVALID")) {
-        setErrorMessage("ভুল API Key! অনুগ্রহ করে সঠিক Gemini API Key যুক্ত করুন।");
-        if (onRequireApiKey) onRequireApiKey();
-      } else {
-        speakText(`Very good try! Now let's try this: "${sampleEn}". Can you say it?`, () => {
-          setTutorState('listening');
-          startListening();
-        });
-      }
-    }
-  }, [onRequireApiKey, speakText, stopCall]);
-
-  // Speech Recognition listener
-  const startListening = useCallback(() => {
-    if (!isCallActiveRef.current || isGeneratingRef.current) return;
-
-    setTutorState('listening');
-
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      return;
-    }
-
-    try {
-      if (recognitionRef.current) {
-        try { 
-          recognitionRef.current.onend = null;
-          recognitionRef.current.onerror = null;
-          recognitionRef.current.abort(); 
-        } catch (e) {}
-      }
-
-      const recognition = new SpeechRecognition();
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.lang = 'en-US';
-
-      let accumulatedText = '';
-
-      recognition.onstart = () => {
-        if (isCallActiveRef.current && !isGeneratingRef.current) {
-          setTutorState('listening');
-        }
-      };
-
-      recognition.onresult = (event: any) => {
-        if (!isCallActiveRef.current || isGeneratingRef.current) return;
-
-        let interim = '';
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
-          const transcript = event.results[i][0].transcript;
-          if (event.results[i].isFinal) {
-            accumulatedText += ' ' + transcript;
-          } else {
-            interim += transcript;
-          }
-        }
-
-        const currentText = (accumulatedText + ' ' + interim).trim();
-        if (currentText && currentText !== lastSpokenTextRef.current) {
-          lastSpokenTextRef.current = currentText;
-          setUserSpeaking(true);
-          setCurrentSubtitle(`আপনি বলছেন: "${currentText}"`);
-
-          if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-          silenceTimerRef.current = setTimeout(() => {
-            if (isCallActiveRef.current && currentText.length > 0 && !isGeneratingRef.current) {
-              setUserSpeaking(false);
-              try { 
-                recognition.onend = null;
-                recognition.abort(); 
-              } catch (e) {}
-              sendToGemini(currentText);
-            }
-          }, 1500);
-        }
-      };
-
-      recognition.onerror = (event: any) => {
-        // Suppress benign errors like no-speech or aborted
-        if (event.error !== 'no-speech' && event.error !== 'aborted') {
-          console.warn("Speech recognition notice:", event.error);
-        }
-      };
-
-      recognition.onend = () => {
-        if (isCallActiveRef.current && !isGeneratingRef.current && tutorState === 'listening') {
-          try {
-            recognition.start();
-          } catch (e) {}
-        }
-      };
-
-      recognitionRef.current = recognition;
-      recognition.start();
-    } catch (e) {
-      console.warn("Speech recognition initialization notice:", e);
-    }
-  }, [sendToGemini, tutorState]);
-
-  // Start Live Speaking Session
   const startCall = useCallback(async (currentPattern?: Pattern) => {
     const userApiKey = getUserApiKey();
     if (!userApiKey) {
@@ -384,98 +138,202 @@ Goal:
       setConnectionStatus('connecting');
       setErrorMessage('');
       isCallActiveRef.current = true;
-      currentPatternRef.current = currentPattern || null;
-      chatHistoryRef.current = [];
-      lastSpokenTextRef.current = '';
 
-      // Initialize Web Audio Context for microphone waveform
-      try {
-        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-        const audioCtx = new AudioCtx();
-        await audioCtx.resume();
-        audioCtxRef.current = audioCtx;
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      const inputCtx = new AudioCtx({ sampleRate: 16000 });
+      const outputCtx = new AudioCtx({ sampleRate: 24000 });
+      
+      await inputCtx.resume();
+      await outputCtx.resume();
 
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-          }
-        });
-        mediaStreamRef.current = stream;
+      inputAudioCtxRef.current = inputCtx;
+      outputAudioCtxRef.current = outputCtx;
+      nextPlayTimeRef.current = outputCtx.currentTime;
 
-        const source = audioCtx.createMediaStreamSource(stream);
-        const analyser = audioCtx.createAnalyser();
-        analyser.fftSize = 256;
-        source.connect(analyser);
-        analyserRef.current = analyser;
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount: 1,
+          sampleRate: 16000,
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        }
+      });
+      mediaStreamRef.current = stream;
 
-        const dataArray = new Uint8Array(analyser.frequencyBinCount);
-        const checkAudioLevel = () => {
-          if (!isCallActiveRef.current) return;
-          analyser.getByteFrequencyData(dataArray);
-          let sum = 0;
-          for (let i = 0; i < dataArray.length; i++) {
-            sum += dataArray[i];
-          }
-          const avg = sum / dataArray.length;
-          const normalized = Math.min(1, avg / 70);
-          
-          if (tutorState === 'listening') {
-            setAudioLevel(normalized);
-            setUserSpeaking(normalized > 0.12);
-          }
-
-          animFrameRef.current = requestAnimationFrame(checkAudioLevel);
-        };
-        animFrameRef.current = requestAnimationFrame(checkAudioLevel);
-      } catch (micErr) {
-        console.warn("Audio Context / Mic visualizer warning (call will still proceed):", micErr);
-      }
-
-      setConnectionStatus('connected');
-      setCallActive(true);
-
-      // Welcome prompt from Air
       const pId = currentPattern?.id || 1;
       const struct = currentPattern?.structure || "Subject + want(s) + to + Verb";
       const meaning = currentPattern?.bengaliMeaning || "কেউ কোনো কিছু করতে চায়";
-      const sampleEn = currentPattern?.sentenceBuilding?.[0]?.en || "I want to speak English";
-      const question = currentPattern?.speakingTask?.promptQuestionBn || "আপনি বলুন তো, আপনি কী করতে চান?";
+      const sampleEn = currentPattern?.sentenceBuilding?.[0]?.en || "";
+      const sampleBn = currentPattern?.sentenceBuilding?.[0]?.bn || "";
+      const grammarNote = currentPattern?.grammarCoverage?.[0]?.explanation || "";
+      const powerWord = currentPattern?.vocabularySpotlight?.powerWords?.[0]?.word || "";
+      const topic = currentPattern?.speakingTask?.topic || "Daily Life";
 
-      const welcomeGreeting = `Hello! I am Air. Today we are practicing: "${meaning}" (${struct}). For example: "${sampleEn}". ${question}`;
-
-      speakText(welcomeGreeting, () => {
-        setTutorState('listening');
-        startListening();
+      const queryParams = new URLSearchParams({
+        apiKey: userApiKey,
+        patternId: String(pId),
+        structure: struct,
+        meaning: meaning,
+        sampleEn1: sampleEn,
+        sampleBn1: sampleBn,
+        grammarNote: grammarNote,
+        powerWord: powerWord,
+        topic: topic,
       });
+
+      // Construct WS URL using getWebSocketUrl to work seamlessly in web preview and Android APK
+      const baseWsUrl = getWebSocketUrl('/live');
+      const wsUrl = `${baseWsUrl}?${queryParams.toString()}`;
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        if (!isCallActiveRef.current) return;
+        setConnectionStatus('connected');
+        setCallActive(true);
+        setTutorState('speaking');
+        setCurrentSubtitle("সংযোগ হয়েছে! Air কথা বলছে...");
+
+        const source = inputCtx.createMediaStreamSource(stream);
+        const processor = inputCtx.createScriptProcessor(4096, 1, 1);
+        processorRef.current = processor;
+
+        processor.onaudioprocess = (e) => {
+          if (!isCallActiveRef.current) return;
+          const inputData = e.inputBuffer.getChannelData(0);
+
+          let sum = 0;
+          for (let i = 0; i < inputData.length; i++) {
+            sum += Math.abs(inputData[i]);
+          }
+          const avg = sum / inputData.length;
+          const isSpeaking = avg > 0.015;
+
+          if (isSpeaking) {
+            setAudioLevel(Math.min(1, avg * 5));
+            setUserSpeaking(true);
+            setTutorState('listening');
+          } else {
+            setUserSpeaking(false);
+          }
+
+          if (ws.readyState === WebSocket.OPEN) {
+            const pcmBuffer = floatTo16BitPCM(inputData);
+            const base64Audio = base64FromArrayBuffer(pcmBuffer);
+            ws.send(JSON.stringify({ audio: base64Audio }));
+          }
+        };
+
+        source.connect(processor);
+        processor.connect(inputCtx.destination);
+      };
+
+      ws.onmessage = (event) => {
+        if (!isCallActiveRef.current) return;
+        try {
+          const msg = JSON.parse(event.data);
+
+          if (msg.requireApiKey || (msg.error && msg.error.includes("API Key"))) {
+            setErrorMessage(msg.error || "Gemini API Key প্রয়োজন।");
+            if (onRequireApiKey) onRequireApiKey();
+            stopCall();
+            return;
+          } else if (msg.error) {
+            console.error("Live API error received from server:", msg.error);
+            setErrorMessage(`Error: ${msg.error}`);
+            stopCall();
+            return;
+          }
+
+          if (msg.interrupted) {
+            clearAudioQueue();
+            setTutorState('listening');
+            return;
+          }
+
+          if (msg.text) {
+            setCurrentSubtitle(msg.text);
+            setTutorState('speaking');
+            if (subtitleTimeoutRef.current) clearTimeout(subtitleTimeoutRef.current);
+            subtitleTimeoutRef.current = setTimeout(() => {
+              if (isCallActiveRef.current) {
+                setTutorState('listening');
+              }
+            }, 4000);
+          }
+
+          if (msg.audio && outputAudioCtxRef.current) {
+            const outCtx = outputAudioCtxRef.current;
+            const audioBuf = base64ToAudioBuffer(msg.audio, outCtx, 24000);
+            
+            const source = outCtx.createBufferSource();
+            source.buffer = audioBuf;
+            source.connect(outCtx.destination);
+
+            const now = outCtx.currentTime;
+            if (nextPlayTimeRef.current < now) {
+              nextPlayTimeRef.current = now;
+            }
+
+            source.start(nextPlayTimeRef.current);
+            nextPlayTimeRef.current += audioBuf.duration;
+
+            activeSourcesRef.current.push(source);
+            source.onended = () => {
+              activeSourcesRef.current = activeSourcesRef.current.filter(s => s !== source);
+              if (activeSourcesRef.current.length === 0 && isCallActiveRef.current) {
+                setTutorState('listening');
+              }
+            };
+
+            setTutorState('speaking');
+            setAudioLevel(0.4 + Math.random() * 0.4);
+          }
+
+          if (msg.hangUp) {
+            setCurrentSubtitle(msg.reason || "কথা শেষ! চমৎকার প্র্যাকটিস হলো!");
+            setTimeout(() => {
+              stopCall();
+            }, 2500);
+          }
+
+        } catch (e) {
+          console.error("Failed to parse incoming WS message:", e);
+        }
+      };
+
+      ws.onerror = (err) => {
+        console.error("WebSocket error:", err);
+        setConnectionStatus('error');
+        setErrorMessage("লাইভ অডিও সংযোগে সমস্যা হয়েছে। আবার চেষ্টা করুন।");
+      };
+
+      ws.onclose = (e) => {
+        console.log("Live WebSocket closed:", e.code, e.reason);
+        if (isCallActiveRef.current) {
+          if (e.code === 1008) {
+            setErrorMessage("Gemini API Key সঠিক নয়। অনুগ্রহ করে সঠিক কি দিন।");
+            if (onRequireApiKey) onRequireApiKey();
+          }
+          stopCall();
+        }
+      };
 
     } catch (err: any) {
       console.error("Start call error:", err);
       setConnectionStatus('error');
-      setErrorMessage(err.message || "মাইক্রোফোন চালু করতে সমস্যা হয়েছে। ডিভাইসের পারমিশন চেক করুন।");
+      setErrorMessage(err.message || "মাইক্রোফোন চালু করতে সমস্যা হয়েছে। ব্রাউজার পারমিশন চেক করুন।");
       stopCall();
     }
-  }, [onRequireApiKey, speakText, startListening, stopCall, tutorState]);
+  }, [clearAudioQueue, onRequireApiKey, stopCall]);
 
-  // Quick manual trigger for user text or suggested answers
   const sendManualMessage = useCallback((text: string) => {
-    if (!callActive) {
-      if (currentPatternRef.current) {
-        startCall(currentPatternRef.current).then(() => {
-          setTimeout(() => sendToGemini(text), 1000);
-        });
-      }
+    if (!callActive || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
       return;
     }
-    if (recognitionRef.current) {
-      try { 
-        recognitionRef.current.onend = null;
-        recognitionRef.current.abort(); 
-      } catch (e) {}
-    }
-    sendToGemini(text);
-  }, [callActive, sendToGemini, startCall]);
+    wsRef.current.send(JSON.stringify({ text }));
+  }, [callActive]);
 
   useEffect(() => {
     return () => {
@@ -496,3 +354,4 @@ Goal:
     sendManualMessage,
   };
 }
+

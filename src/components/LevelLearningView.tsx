@@ -939,41 +939,6 @@ export const LevelLearningView: React.FC<LevelLearningViewProps> = ({
                   </button>
                 ) : (
                   <div className="w-full space-y-4">
-                    {/* Quick Spoken Practice Prompts (1-Tap to talk to Air) */}
-                    <div className="space-y-2 bg-slate-900/80 border border-slate-800 rounded-xl p-3.5">
-                      <div className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
-                        <Sparkles className="w-3.5 h-3.5" />
-                        <span>ট্যাপ করে বলুন বা উত্তর দিন (Quick Tap to Speak):</span>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {pattern.sentenceBuilding.slice(0, 3).map((item, idx) => (
-                          <button
-                            key={idx}
-                            onClick={() => {
-                              if (onSendManualMessage) {
-                                onSendManualMessage(item.en);
-                              }
-                            }}
-                            className="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-emerald-500/20 text-slate-200 hover:text-emerald-300 border border-slate-700 hover:border-emerald-500/40 transition-all text-left flex items-center gap-1.5"
-                          >
-                            <Mic className="w-3 h-3 text-emerald-400 flex-shrink-0" />
-                            <span>&ldquo;{item.en}&rdquo;</span>
-                          </button>
-                        ))}
-                        <button
-                          onClick={() => {
-                            if (onSendManualMessage) {
-                              onSendManualMessage(pattern.speakingTask.sampleAnswerEn);
-                            }
-                          }}
-                          className="text-xs px-3 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 transition-all text-left flex items-center gap-1.5"
-                        >
-                          <Mic className="w-3 h-3 text-emerald-400 flex-shrink-0" />
-                          <span>&ldquo;{pattern.speakingTask.sampleAnswerEn}&rdquo;</span>
-                        </button>
-                      </div>
-                    </div>
-
                     {/* Live Message Input bar */}
                     <form
                       onSubmit={(e) => {

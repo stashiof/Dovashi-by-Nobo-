@@ -338,7 +338,7 @@ AIR-এর বাস্তবমুখী কথপোকথন ও আড্ড
                 }
               }
 
-              // 1. Live audio from Gemini model
+              // 1. Live audio & text from Gemini model
               const parts = message.serverContent?.modelTurn?.parts;
               if (parts && parts.length > 0) {
                 for (const part of parts) {
@@ -349,6 +349,11 @@ AIR-এর বাস্তবমুখী কথপোকথন ও আড্ড
                     clientWs.send(JSON.stringify({ text: part.text }));
                   }
                 }
+              }
+
+              // Live real-time output transcription
+              if (message.serverContent?.outputTranscription?.text) {
+                clientWs.send(JSON.stringify({ text: message.serverContent.outputTranscription.text }));
               }
 
               // Interruption notification
@@ -365,7 +370,7 @@ AIR-এর বাস্তবমুখী কথপোকথন ও আড্ড
             }
           },
           onerror: (err: any) => {
-            console.error("Gemini Live session error:", err);
+            console.error("Gemini Live session error:", err); console.log("LIVE API ERROR DETAILS:", JSON.stringify(err, null, 2));
             try {
               clientWs.send(JSON.stringify({ error: err.message || "Live session error" }));
             } catch (e) {}
@@ -379,8 +384,9 @@ AIR-এর বাস্তবমুখী কথপোকথন ও আড্ড
       // Greet the student on call connect tailored to the pattern
       sessionPromise.then(session => {
         try {
-          session.sendRealtimeInput({
-            text: `[SYSTEM TRIGGER: The call has just connected. Speak in natural energetic BENGALI with lively storytelling tone.] স্বাগতম জানিয়ে সহজ বাংলায় বুঝিয়ে বলো: "স্বাগতম লেভেল ${patternId}-এ! আজকে আমাদের প্যাটার্ন হলো: ${patternStructure} — মানে '${patternMeaning}'। যেমন: ${sampleBn1 || 'আমি এটা করতে চাই'} = ${sampleEn1 || 'I want to do this'}। এবার ধরো তুমি বন্ধুদের সাথে আড্ডায় বসেছ, আর বলতে চাও 'আমি চা খেতে চাই'—এর ইংরেজি কী হবে বলো তো?"`
+          session.sendClientContent({
+            turns: [{role: 'user', parts: [{text: `[SYSTEM TRIGGER: The call has just connected. Speak in natural energetic BENGALI with lively storytelling tone.] স্বাগতম জানিয়ে সহজ বাংলায় বুঝিয়ে বলো: "স্বাগতম লেভেল ${patternId}-এ! আজকে আমাদের প্যাটার্ন হলো: ${patternStructure} — মানে '${patternMeaning}'। যেমন: ${sampleBn1 || 'আমি এটা করতে চাই'} = ${sampleEn1 || 'I want to do this'}। এবার ধরো তুমি বন্ধুদের সাথে আড্ডায় বসেছ, আর বলতে চাও 'আমি চা খেতে চাই'—এর ইংরেজি কী হবে বলো তো?"`}]}],
+            turnComplete: true
           });
         } catch(e) {
           console.warn("Greeting trigger err:", e);
@@ -402,8 +408,9 @@ AIR-এর বাস্তবমুখী কথপোকথন ও আড্ড
               audio: { data: parsed.audio, mimeType: "audio/pcm;rate=16000" },
             });
           } else if (parsed.text) {
-            session.sendRealtimeInput({
-              text: parsed.text
+            session.sendClientContent({
+              turns: [{role: 'user', parts: [{text: parsed.text}]}],
+              turnComplete: true
             });
           }
         } catch (err) {
