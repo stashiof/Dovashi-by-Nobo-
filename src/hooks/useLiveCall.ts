@@ -8,6 +8,9 @@ interface ChatMessage {
   text: string;
 }
 
+// Global reference to prevent Android Chrome SpeechSynthesis garbage collection bug
+let activeUtterance: SpeechSynthesisUtterance | null = null;
+
 export function useLiveCall(onRequireApiKey?: () => void) {
   const [callActive, setCallActive] = useState(false);
   const [tutorState, setTutorState] = useState<'idle' | 'listening' | 'thinking' | 'speaking' | 'dancing'>('idle');
@@ -24,6 +27,8 @@ export function useLiveCall(onRequireApiKey?: () => void) {
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const animFrameRef = useRef<number | null>(null);
   const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const speechSafetyTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const waveIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const chatHistoryRef = useRef<ChatMessage[]>([]);
   const currentPatternRef = useRef<Pattern | null>(null);
   const isGeneratingRef = useRef<boolean>(false);
@@ -37,6 +42,8 @@ export function useLiveCall(onRequireApiKey?: () => void) {
     // Stop speech recognition
     if (recognitionRef.current) {
       try {
+        recognitionRef.current.onend = null;
+        recognitionRef.current.onerror = null;
         recognitionRef.current.abort();
       } catch (e) {}
       recognitionRef.current = null;
@@ -48,17 +55,27 @@ export function useLiveCall(onRequireApiKey?: () => void) {
         window.speechSynthesis.cancel();
       } catch (e) {}
     }
+    activeUtterance = null;
+
+    if (waveIntervalRef.current) {
+      clearInterval(waveIntervalRef.current);
+      waveIntervalRef.current = null;
+    }
+
+    if (speechSafetyTimerRef.current) {
+      clearTimeout(speechSafetyTimerRef.current);
+      speechSafetyTimerRef.current = null;
+    }
+
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
 
     // Stop audio animation
     if (animFrameRef.current) {
       cancelAnimationFrame(animFrameRef.current);
       animFrameRef.current = null;
-    }
-
-    // Clear silence timer
-    if (silenceTimerRef.current) {
-      clearTimeout(silenceTimerRef.current);
-      silenceTimerRef.current = null;
     }
 
     // Stop mic stream
@@ -85,7 +102,7 @@ export function useLiveCall(onRequireApiKey?: () => void) {
     setCurrentSubtitle('');
   }, []);
 
-  // Text to Speech with high-quality animated feedback
+  // Text to Speech with Android fix & safety watchdog
   const speakText = useCallback((textToSpeak: string, onEndCallback?: () => void) => {
     if (!isCallActiveRef.current) return;
 
@@ -99,59 +116,74 @@ export function useLiveCall(onRequireApiKey?: () => void) {
     setTutorState('speaking');
     setCurrentSubtitle(cleanSpeech);
 
+    let finished = false;
+    const finishSpeech = () => {
+      if (finished) return;
+      finished = true;
+      if (speechSafetyTimerRef.current) {
+        clearTimeout(speechSafetyTimerRef.current);
+        speechSafetyTimerRef.current = null;
+      }
+      if (waveIntervalRef.current) {
+        clearInterval(waveIntervalRef.current);
+        waveIntervalRef.current = null;
+      }
+      setAudioLevel(0);
+      activeUtterance = null;
+      if (isCallActiveRef.current && onEndCallback) {
+        onEndCallback();
+      }
+    };
+
+    // Calculate approximate speaking duration for safety fallback (average 15 chars per sec)
+    const expectedDurationMs = Math.max(2500, Math.min(15000, cleanSpeech.length * 85));
+    if (speechSafetyTimerRef.current) clearTimeout(speechSafetyTimerRef.current);
+    speechSafetyTimerRef.current = setTimeout(() => {
+      finishSpeech();
+    }, expectedDurationMs + 1000);
+
     if (!('speechSynthesis' in window)) {
-      // Fallback if SpeechSynthesis not available
-      setTimeout(() => {
-        if (isCallActiveRef.current && onEndCallback) onEndCallback();
-      }, Math.min(6000, cleanSpeech.length * 70));
       return;
     }
 
-    window.speechSynthesis.cancel();
+    try {
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.resume();
 
-    const utterance = new SpeechSynthesisUtterance(cleanSpeech);
-    
-    // Choose appropriate voice
-    const voices = window.speechSynthesis.getVoices();
-    const englishVoice = voices.find(v => v.lang.startsWith('en') && (v.name.includes('Natural') || v.name.includes('Google') || v.name.includes('Samantha') || v.name.includes('Female')));
-    if (englishVoice) {
-      utterance.voice = englishVoice;
+      const utterance = new SpeechSynthesisUtterance(cleanSpeech);
+      activeUtterance = utterance; // Prevent garbage collection bug
+      
+      const voices = window.speechSynthesis.getVoices();
+      const englishVoice = voices.find(v => v.lang.startsWith('en') && (v.name.includes('Natural') || v.name.includes('Google') || v.name.includes('Samantha') || v.name.includes('Female')));
+      if (englishVoice) {
+        utterance.voice = englishVoice;
+      }
+      
+      utterance.rate = 0.95;
+      utterance.pitch = 1.05;
+
+      // Animate waveform during voice
+      if (waveIntervalRef.current) clearInterval(waveIntervalRef.current);
+      waveIntervalRef.current = setInterval(() => {
+        if (isCallActiveRef.current) {
+          setAudioLevel(0.3 + Math.random() * 0.5);
+        }
+      }, 150);
+
+      utterance.onend = () => {
+        finishSpeech();
+      };
+
+      utterance.onerror = (e) => {
+        console.warn("Speech synthesis error, finishing speech safely:", e);
+        finishSpeech();
+      };
+
+      window.speechSynthesis.speak(utterance);
+    } catch (e) {
+      console.warn("Speech synthesis exception:", e);
+      finishSpeech();
     }
-    
-    utterance.rate = 0.93;
-    utterance.pitch = 1.05;
-
-    // Simulate animated speech waves
-    let waveInterval: NodeJS.Timeout | null = setInterval(() => {
-      if (isCallActiveRef.current) {
-        setAudioLevel(0.25 + Math.random() * 0.55);
-      }
-    }, 150);
-
-    utterance.onend = () => {
-      if (waveInterval) {
-        clearInterval(waveInterval);
-        waveInterval = null;
-      }
-      setAudioLevel(0);
-      if (isCallActiveRef.current && onEndCallback) {
-        onEndCallback();
-      }
-    };
-
-    utterance.onerror = (e) => {
-      console.warn("Speech synthesis error:", e);
-      if (waveInterval) {
-        clearInterval(waveInterval);
-        waveInterval = null;
-      }
-      setAudioLevel(0);
-      if (isCallActiveRef.current && onEndCallback) {
-        onEndCallback();
-      }
-    };
-
-    window.speechSynthesis.speak(utterance);
   }, []);
 
   // Send user message to Gemini and speak response
@@ -160,13 +192,13 @@ export function useLiveCall(onRequireApiKey?: () => void) {
     isGeneratingRef.current = true;
 
     setTutorState('thinking');
-    setCurrentSubtitle('Air শুনছে ও মূল্যায়ন করছে...');
+    setCurrentSubtitle(`আপনি: "${userText}" \n\nAir ভাবছে ও উত্তর তৈরি করছে...`);
 
     const userApiKey = getUserApiKey();
     if (!userApiKey) {
       if (onRequireApiKey) onRequireApiKey();
       setErrorMessage("Gemini API Key প্রয়োজন।");
-      stopCall();
+      isGeneratingRef.current = false;
       return;
     }
 
@@ -174,7 +206,7 @@ export function useLiveCall(onRequireApiKey?: () => void) {
     const pId = pattern?.id || 1;
     const struct = pattern?.structure || "Subject + want(s) + to + Verb";
     const meaning = pattern?.bengaliMeaning || "কেউ কোনো কিছু করতে চায়";
-    const sampleEn = pattern?.sentenceBuilding?.[0]?.en || "";
+    const sampleEn = pattern?.sentenceBuilding?.[0]?.en || "I want to learn English";
     const powerWord = pattern?.vocabularySpotlight?.powerWords?.[0]?.word || "";
     const topic = pattern?.speakingTask?.topic || "Daily Life";
     const grammarRule = pattern?.grammarCoverage?.[0]?.explanation || "";
@@ -192,11 +224,11 @@ Current lesson:
 
 Goal:
 1. Speak in a natural, warm, conversational tone (mix of cheerful Bengali guidance and clear English sentences).
-2. Keep your response very concise (1-2 sentences maximum) so the voice flow is fast and conversational.
-3. If the user made any grammatical mistakes with "${struct}", gently correct them in 1 sentence.
-4. If they spoke well, give enthusiastic praise.
-5. Always end with a short follow-up question prompting the user to speak or answer using the pattern.
-6. If user wants to end the conversation (e.g. says "রাখছি", "আজকের মতো থাক", "বাই", "bye", "goodbye", "call disconnect"), say a warm goodbye and append [HANGUP] at the end.`;
+2. Keep your response very concise (1-2 sentences maximum) so the conversation is lively and engaging.
+3. If the user made any grammatical mistakes regarding "${struct}", gently explain the fix in 1 simple sentence.
+4. If they spoke well, give energetic praise!
+5. Always end with a short follow-up question or sentence prompt for the user.
+6. If user wants to end the conversation (e.g. says "রাখছি", "আজকের মতো থাক", "বাই", "bye", "goodbye"), say a warm goodbye and append [HANGUP] at the end.`;
 
     try {
       const ai = new GoogleGenAI({ apiKey: userApiKey });
@@ -214,11 +246,11 @@ Goal:
         contents: contents as any,
         config: {
           temperature: 0.7,
-          maxOutputTokens: 120,
+          maxOutputTokens: 140,
         }
       });
 
-      const reply = response.text?.trim() || "Great job! Let's make another sentence!";
+      const reply = response.text?.trim() || `Great job! Now try saying: "${sampleEn}"`;
       chatHistoryRef.current.push({ role: 'model', text: reply });
       isGeneratingRef.current = false;
 
@@ -230,7 +262,6 @@ Goal:
             stopCall();
           }, 1500);
         } else {
-          // Re-enable listening
           setTutorState('listening');
           startListening();
         }
@@ -243,10 +274,8 @@ Goal:
       if (msg.includes("API key not valid") || msg.includes("API_KEY_INVALID")) {
         setErrorMessage("ভুল API Key! অনুগ্রহ করে সঠিক Gemini API Key যুক্ত করুন।");
         if (onRequireApiKey) onRequireApiKey();
-        stopCall();
       } else {
-        // Friendly local fallback
-        speakText(`Very good try! Now try saying: "${sampleEn}"`, () => {
+        speakText(`Very good try! Now let's try this: "${sampleEn}". Can you say it?`, () => {
           setTutorState('listening');
           startListening();
         });
@@ -256,18 +285,22 @@ Goal:
 
   // Speech Recognition listener
   const startListening = useCallback(() => {
-    if (!isCallActiveRef.current) return;
+    if (!isCallActiveRef.current || isGeneratingRef.current) return;
+
+    setTutorState('listening');
 
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      // If browser has no speech recognition, keep mic visualizer active and offer manual voice tap
-      setTutorState('listening');
       return;
     }
 
     try {
       if (recognitionRef.current) {
-        try { recognitionRef.current.abort(); } catch (e) {}
+        try { 
+          recognitionRef.current.onend = null;
+          recognitionRef.current.onerror = null;
+          recognitionRef.current.abort(); 
+        } catch (e) {}
       }
 
       const recognition = new SpeechRecognition();
@@ -278,7 +311,7 @@ Goal:
       let accumulatedText = '';
 
       recognition.onstart = () => {
-        if (isCallActiveRef.current) {
+        if (isCallActiveRef.current && !isGeneratingRef.current) {
           setTutorState('listening');
         }
       };
@@ -300,29 +333,30 @@ Goal:
         if (currentText && currentText !== lastSpokenTextRef.current) {
           lastSpokenTextRef.current = currentText;
           setUserSpeaking(true);
-          setCurrentSubtitle(`আপনি: "${currentText}"`);
+          setCurrentSubtitle(`আপনি বলছেন: "${currentText}"`);
 
-          // Reset silence timer - when user stops speaking for 1.6s, process with Gemini
           if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
           silenceTimerRef.current = setTimeout(() => {
-            if (isCallActiveRef.current && currentText.length > 1 && !isGeneratingRef.current) {
+            if (isCallActiveRef.current && currentText.length > 0 && !isGeneratingRef.current) {
               setUserSpeaking(false);
-              try { recognition.abort(); } catch (e) {}
+              try { 
+                recognition.onend = null;
+                recognition.abort(); 
+              } catch (e) {}
               sendToGemini(currentText);
             }
-          }, 1600);
+          }, 1500);
         }
       };
 
       recognition.onerror = (event: any) => {
-        console.warn("Speech recognition error:", event.error);
-        if (event.error === 'not-allowed') {
-          setErrorMessage("মাইক্রোফোনের পারমিশন দিন যাতে Air আপনার কথা শুনতে পারে।");
+        // Suppress benign errors like no-speech or aborted
+        if (event.error !== 'no-speech' && event.error !== 'aborted') {
+          console.warn("Speech recognition notice:", event.error);
         }
       };
 
       recognition.onend = () => {
-        // Auto-restart recognition if call is still active and not speaking/thinking
         if (isCallActiveRef.current && !isGeneratingRef.current && tutorState === 'listening') {
           try {
             recognition.start();
@@ -333,7 +367,7 @@ Goal:
       recognitionRef.current = recognition;
       recognition.start();
     } catch (e) {
-      console.warn("Could not start speech recognition:", e);
+      console.warn("Speech recognition initialization notice:", e);
     }
   }, [sendToGemini, tutorState]);
 
@@ -355,48 +389,49 @@ Goal:
       lastSpokenTextRef.current = '';
 
       // Initialize Web Audio Context for microphone waveform
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      const audioCtx = new AudioCtx();
-      await audioCtx.resume();
-      audioCtxRef.current = audioCtx;
+      try {
+        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+        const audioCtx = new AudioCtx();
+        await audioCtx.resume();
+        audioCtxRef.current = audioCtx;
 
-      // Get microphone stream
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        }
-      });
-      mediaStreamRef.current = stream;
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          }
+        });
+        mediaStreamRef.current = stream;
 
-      // Setup audio analyzer
-      const source = audioCtx.createMediaStreamSource(stream);
-      const analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 256;
-      source.connect(analyser);
-      analyserRef.current = analyser;
+        const source = audioCtx.createMediaStreamSource(stream);
+        const analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 256;
+        source.connect(analyser);
+        analyserRef.current = analyser;
 
-      // Monitor audio levels for the visualizer
-      const dataArray = new Uint8Array(analyser.frequencyBinCount);
-      const checkAudioLevel = () => {
-        if (!isCallActiveRef.current) return;
-        analyser.getByteFrequencyData(dataArray);
-        let sum = 0;
-        for (let i = 0; i < dataArray.length; i++) {
-          sum += dataArray[i];
-        }
-        const avg = sum / dataArray.length;
-        const normalized = Math.min(1, avg / 80);
-        
-        if (tutorState === 'listening') {
-          setAudioLevel(normalized);
-          setUserSpeaking(normalized > 0.12);
-        }
+        const dataArray = new Uint8Array(analyser.frequencyBinCount);
+        const checkAudioLevel = () => {
+          if (!isCallActiveRef.current) return;
+          analyser.getByteFrequencyData(dataArray);
+          let sum = 0;
+          for (let i = 0; i < dataArray.length; i++) {
+            sum += dataArray[i];
+          }
+          const avg = sum / dataArray.length;
+          const normalized = Math.min(1, avg / 70);
+          
+          if (tutorState === 'listening') {
+            setAudioLevel(normalized);
+            setUserSpeaking(normalized > 0.12);
+          }
 
+          animFrameRef.current = requestAnimationFrame(checkAudioLevel);
+        };
         animFrameRef.current = requestAnimationFrame(checkAudioLevel);
-      };
-      animFrameRef.current = requestAnimationFrame(checkAudioLevel);
+      } catch (micErr) {
+        console.warn("Audio Context / Mic visualizer warning (call will still proceed):", micErr);
+      }
 
       setConnectionStatus('connected');
       setCallActive(true);
@@ -406,10 +441,9 @@ Goal:
       const struct = currentPattern?.structure || "Subject + want(s) + to + Verb";
       const meaning = currentPattern?.bengaliMeaning || "কেউ কোনো কিছু করতে চায়";
       const sampleEn = currentPattern?.sentenceBuilding?.[0]?.en || "I want to speak English";
-      const sampleBn = currentPattern?.sentenceBuilding?.[0]?.bn || "আমি ইংরেজি বলতে চাই";
-      const question = currentPattern?.speakingTask?.promptQuestionBn || "আপনি বলুন তো?";
+      const question = currentPattern?.speakingTask?.promptQuestionBn || "আপনি বলুন তো, আপনি কী করতে চান?";
 
-      const welcomeGreeting = `হ্যালো! আমি Air। আজ লেভেল ${pId}-এ আমরা শিখছি: "${meaning}" (${struct})। যেমন: "${sampleEn}" (${sampleBn})। ${question}`;
+      const welcomeGreeting = `Hello! I am Air. Today we are practicing: "${meaning}" (${struct}). For example: "${sampleEn}". ${question}`;
 
       speakText(welcomeGreeting, () => {
         setTutorState('listening');
@@ -423,6 +457,25 @@ Goal:
       stopCall();
     }
   }, [onRequireApiKey, speakText, startListening, stopCall, tutorState]);
+
+  // Quick manual trigger for user text or suggested answers
+  const sendManualMessage = useCallback((text: string) => {
+    if (!callActive) {
+      if (currentPatternRef.current) {
+        startCall(currentPatternRef.current).then(() => {
+          setTimeout(() => sendToGemini(text), 1000);
+        });
+      }
+      return;
+    }
+    if (recognitionRef.current) {
+      try { 
+        recognitionRef.current.onend = null;
+        recognitionRef.current.abort(); 
+      } catch (e) {}
+    }
+    sendToGemini(text);
+  }, [callActive, sendToGemini, startCall]);
 
   useEffect(() => {
     return () => {
@@ -440,5 +493,6 @@ Goal:
     errorMessage,
     startCall,
     stopCall,
+    sendManualMessage,
   };
 }

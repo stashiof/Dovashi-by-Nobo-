@@ -30,6 +30,7 @@ interface LevelLearningViewProps {
   errorMessage: string;
   onStartCall: (pattern: Pattern) => void;
   onStopCall: () => void;
+  onSendManualMessage?: (text: string) => void;
 }
 
 type TabType = 'formula' | 'grammar' | 'vocab' | 'practice' | 'speaking';
@@ -51,9 +52,11 @@ export const LevelLearningView: React.FC<LevelLearningViewProps> = ({
   connectionStatus,
   errorMessage,
   onStartCall,
-  onStopCall
+  onStopCall,
+  onSendManualMessage
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('formula');
+  const [speakingTextInput, setSpeakingTextInput] = useState('');
   
   // Practice State
   const [practiceAnswers, setPracticeAnswers] = useState<Record<string, string>>({});
@@ -895,7 +898,7 @@ export const LevelLearningView: React.FC<LevelLearningViewProps> = ({
               )}
 
               {/* Call Controls */}
-              <div className="flex flex-col items-center gap-3">
+              <div className="flex flex-col items-center gap-3 w-full max-w-lg">
                 {!getUserApiKey() && !callActive && (
                   <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 max-w-md text-center space-y-2">
                     <div className="text-xs font-bold text-amber-300 flex items-center justify-center gap-1.5">
@@ -935,22 +938,88 @@ export const LevelLearningView: React.FC<LevelLearningViewProps> = ({
                     </span>
                   </button>
                 ) : (
-                  <div className="flex items-center gap-3">
-                    <button
-                      onClick={onStopCall}
-                      className="flex items-center gap-2 px-6 py-3.5 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl text-sm shadow-xl shadow-rose-600/20 transition-all"
-                    >
-                      <MicOff className="w-5 h-5" />
-                      <span>কথা শেষ করুন</span>
-                    </button>
+                  <div className="w-full space-y-4">
+                    {/* Quick Spoken Practice Prompts (1-Tap to talk to Air) */}
+                    <div className="space-y-2 bg-slate-900/80 border border-slate-800 rounded-xl p-3.5">
+                      <div className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>ট্যাপ করে বলুন বা উত্তর দিন (Quick Tap to Speak):</span>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {pattern.sentenceBuilding.slice(0, 3).map((item, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => {
+                              if (onSendManualMessage) {
+                                onSendManualMessage(item.en);
+                              }
+                            }}
+                            className="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-emerald-500/20 text-slate-200 hover:text-emerald-300 border border-slate-700 hover:border-emerald-500/40 transition-all text-left flex items-center gap-1.5"
+                          >
+                            <Mic className="w-3 h-3 text-emerald-400 flex-shrink-0" />
+                            <span>&ldquo;{item.en}&rdquo;</span>
+                          </button>
+                        ))}
+                        <button
+                          onClick={() => {
+                            if (onSendManualMessage) {
+                              onSendManualMessage(pattern.speakingTask.sampleAnswerEn);
+                            }
+                          }}
+                          className="text-xs px-3 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 transition-all text-left flex items-center gap-1.5"
+                        >
+                          <Mic className="w-3 h-3 text-emerald-400 flex-shrink-0" />
+                          <span>&ldquo;{pattern.speakingTask.sampleAnswerEn}&rdquo;</span>
+                        </button>
+                      </div>
+                    </div>
 
-                    <button
-                      onClick={handleCompleteSpeaking}
-                      className="flex items-center gap-2 px-5 py-3.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-sm shadow-xl shadow-amber-500/20 transition-all"
+                    {/* Live Message Input bar */}
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        if (speakingTextInput.trim() && onSendManualMessage) {
+                          onSendManualMessage(speakingTextInput.trim());
+                          setSpeakingTextInput('');
+                        }
+                      }}
+                      className="flex items-center gap-2"
                     >
-                      <Award className="w-5 h-5" />
-                      <span>মাস্টারি সম্পন্ন চিহ্নিত করুন</span>
-                    </button>
+                      <input
+                        type="text"
+                        value={speakingTextInput}
+                        onChange={(e) => setSpeakingTextInput(e.target.value)}
+                        placeholder="মুখে বলুন অথবা এখানে লিখে Send চাপুন..."
+                        className="flex-1 px-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                      />
+                      <button
+                        type="submit"
+                        disabled={!speakingTextInput.trim()}
+                        className="px-4 py-2.5 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 text-slate-950 font-bold rounded-xl text-xs flex items-center gap-1 shadow-md transition-all"
+                      >
+                        <Send className="w-3.5 h-3.5" />
+                        <span>পাঠান</span>
+                      </button>
+                    </form>
+
+                    {/* Hangup & Complete Buttons */}
+                    <div className="flex items-center justify-center gap-3 pt-2">
+                      <button
+                        onClick={onStopCall}
+                        className="flex items-center gap-2 px-5 py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl text-xs shadow-xl shadow-rose-600/20 transition-all"
+                      >
+                        <MicOff className="w-4 h-4" />
+                        <span>কথা শেষ করুন</span>
+                      </button>
+
+                      <button
+                        onClick={handleCompleteSpeaking}
+                        className="flex items-center gap-2 px-5 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-xs shadow-xl shadow-amber-500/20 transition-all"
+                      >
+                        <Award className="w-4 h-4" />
+                        <span>মাস্টারি সম্পন্ন চিহ্নিত করুন</span>
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>

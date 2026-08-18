@@ -38,7 +38,8 @@ export default function App() {
     connectionStatus,
     errorMessage,
     startCall,
-    stopCall
+    stopCall,
+    sendManualMessage
   } = useLiveCall(handleOpenApiKeyModal);
 
   // Scroll to top on view change
@@ -150,6 +151,7 @@ export default function App() {
             errorMessage={errorMessage}
             onStartCall={startCall}
             onStopCall={stopCall}
+            onSendManualMessage={sendManualMessage}
           />
         )}
       </main>
