@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Pattern } from '../types';
+import { getUserApiKey } from '../utils/storage';
 
 // Helper: Float32Array to 16-bit PCM Base64
 function floatTo16BitPCMBase64(float32Array: Float32Array): string {
@@ -36,7 +37,7 @@ function base64ToAudioBuffer(base64: string, ctx: AudioContext): AudioBuffer {
   return audioBuffer;
 }
 
-export function useLiveCall() {
+export function useLiveCall(onRequireApiKey?: () => void) {
   const [callActive, setCallActive] = useState(false);
   const [tutorState, setTutorState] = useState<'idle' | 'listening' | 'thinking' | 'speaking' | 'dancing'>('idle');
   const [audioLevel, setAudioLevel] = useState(0);
@@ -183,6 +184,16 @@ export function useLiveCall() {
 
   // Start live voice call
   const startCall = useCallback(async (currentPattern?: Pattern) => {
+    const userApiKey = getUserApiKey();
+    if (!userApiKey) {
+      if (onRequireApiKey) {
+        onRequireApiKey();
+      }
+      setErrorMessage("কথা বলতে অনুগ্রহ করে আগে আপনার Gemini API Key যোগ করুন।");
+      setCurrentSubtitle("🔑 Gemini API Key প্রয়োজন! উপরের বাটনে ক্লিক করে ফ্রিতে কি যোগ করুন।");
+      return;
+    }
+
     try {
       setConnectionStatus('connecting');
       setErrorMessage('');
@@ -238,7 +249,7 @@ export function useLiveCall() {
       highpassFilter.connect(processor);
       processor.connect(inputCtx.destination);
 
-      // Connect WebSocket to Gemini Live with pattern context
+      // Connect WebSocket to Gemini Live with pattern context and user apiKey
       const isMobileApp = window.location.protocol === 'file:' || 
                           window.location.protocol.startsWith('capacitor') || 
                           window.location.protocol.startsWith('ionic');
@@ -248,24 +259,26 @@ export function useLiveCall() {
         : window.location.host;
 
       const protocol = (window.location.protocol === 'https:' || isMobileApp) ? 'wss:' : 'ws:';
-      let wsUrl = `${protocol}//${serverHost}/live`;
+      
+      const queryParams = new URLSearchParams({
+        apiKey: userApiKey
+      });
+
       if (currentPattern) {
-        const queryParams = new URLSearchParams({
-          patternId: String(currentPattern.id),
-          structure: currentPattern.structure,
-          meaning: currentPattern.bengaliMeaning,
-          topic: currentPattern.speakingTask.topic,
-          promptQuestion: currentPattern.speakingTask.promptQuestionBn || '',
-          sampleAnswer: currentPattern.speakingTask.sampleAnswerEn || '',
-          sampleBn1: currentPattern.sentenceBuilding?.[0]?.bn || '',
-          sampleEn1: currentPattern.sentenceBuilding?.[0]?.en || '',
-          powerWord: currentPattern.vocabularySpotlight?.powerWords?.[0]?.word || '',
-          powerWordMeaning: currentPattern.vocabularySpotlight?.powerWords?.[0]?.meaning || '',
-          grammarNote: currentPattern.grammarCoverage?.[0]?.explanation || ''
-        });
-        wsUrl += `?${queryParams.toString()}`;
+        queryParams.set('patternId', String(currentPattern.id));
+        queryParams.set('structure', currentPattern.structure);
+        queryParams.set('meaning', currentPattern.bengaliMeaning);
+        queryParams.set('topic', currentPattern.speakingTask.topic);
+        queryParams.set('promptQuestion', currentPattern.speakingTask.promptQuestionBn || '');
+        queryParams.set('sampleAnswer', currentPattern.speakingTask.sampleAnswerEn || '');
+        queryParams.set('sampleBn1', currentPattern.sentenceBuilding?.[0]?.bn || '');
+        queryParams.set('sampleEn1', currentPattern.sentenceBuilding?.[0]?.en || '');
+        queryParams.set('powerWord', currentPattern.vocabularySpotlight?.powerWords?.[0]?.word || '');
+        queryParams.set('powerWordMeaning', currentPattern.vocabularySpotlight?.powerWords?.[0]?.meaning || '');
+        queryParams.set('grammarNote', currentPattern.grammarCoverage?.[0]?.explanation || '');
       }
 
+      const wsUrl = `${protocol}//${serverHost}/live?${queryParams.toString()}`;
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
@@ -304,6 +317,14 @@ export function useLiveCall() {
       ws.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data);
+
+          if (msg.requireApiKey) {
+            if (onRequireApiKey) onRequireApiKey();
+            setErrorMessage(msg.error || "Gemini API Key প্রয়োজন।");
+            setCurrentSubtitle(msg.error || "Gemini API Key প্রয়োজন।");
+            stopCall();
+            return;
+          }
 
           if (msg.error) {
             console.error("Server Live Error:", msg.error);

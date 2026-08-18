@@ -8,6 +8,8 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
 import { AudioVisualizer } from './AudioVisualizer';
+import { getUserApiKey } from '../utils/storage';
+import { Key } from 'lucide-react';
 
 interface LevelLearningViewProps {
   pattern: Pattern;
@@ -17,6 +19,7 @@ interface LevelLearningViewProps {
   onPrevLevel: () => void;
   onToggleBookmark: (levelId: number) => void;
   onRecordProgress: (stars: number, quizScore: number, practiceDone: boolean, speakingDone: boolean) => void;
+  onOpenApiKeyModal?: () => void;
   // Live Call Props
   callActive: boolean;
   tutorState: 'idle' | 'listening' | 'thinking' | 'speaking' | 'dancing';
@@ -39,6 +42,7 @@ export const LevelLearningView: React.FC<LevelLearningViewProps> = ({
   onPrevLevel,
   onToggleBookmark,
   onRecordProgress,
+  onOpenApiKeyModal,
   callActive,
   tutorState,
   audioLevel,
@@ -85,19 +89,43 @@ export const LevelLearningView: React.FC<LevelLearningViewProps> = ({
     const userText = practiceAnswers[practiceId]?.trim();
     if (!userText) return;
 
+    const userApiKey = getUserApiKey();
+    if (!userApiKey) {
+      if (onOpenApiKeyModal) onOpenApiKeyModal();
+      setPracticeFeedbacks(prev => ({
+        ...prev,
+        [practiceId]: {
+          isCorrect: false,
+          accuracyScore: 0,
+          feedbackBn: 'AI মূল্যায়নের জন্য আপনার নিজস্ব Gemini API Key প্রয়োজন। উপরের "API Key যোগ করুন" বাটনে ক্লিক করে ফ্রিতে কি যুক্ত করুন।',
+          suggestedVersion: ''
+        }
+      }));
+      return;
+    }
+
     setEvaluatingMap(prev => ({ ...prev, [practiceId]: true }));
     try {
       const res = await fetch('/api/evaluate-sentence', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-gemini-api-key': userApiKey
+        },
         body: JSON.stringify({
           patternId: pattern.id,
           structure: pattern.structure,
           promptBn: promptBn,
-          userSentence: userText
+          userSentence: userText,
+          apiKey: userApiKey
         })
       });
       const data = await res.json();
+
+      if (data.requireApiKey && onOpenApiKeyModal) {
+        onOpenApiKeyModal();
+      }
+
       setPracticeFeedbacks(prev => ({ ...prev, [practiceId]: data }));
 
       if (data.isCorrect || data.accuracyScore >= 70) {
@@ -879,10 +907,37 @@ export const LevelLearningView: React.FC<LevelLearningViewProps> = ({
               )}
 
               {/* Call Controls */}
-              <div className="flex items-center gap-3">
+              <div className="flex flex-col items-center gap-3">
+                {!getUserApiKey() && !callActive && (
+                  <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 max-w-md text-center space-y-2">
+                    <div className="text-xs font-bold text-amber-300 flex items-center justify-center gap-1.5">
+                      <Key className="w-4 h-4 text-amber-400" />
+                      <span>Gemini API Key প্রয়োজন</span>
+                    </div>
+                    <p className="text-xs text-slate-300 leading-relaxed">
+                      AI কোচের সাথে লাইভ কথা বলতে আপনার নিজস্ব ফ্রি Gemini API Key যোগ করুন।
+                    </p>
+                    {onOpenApiKeyModal && (
+                      <button
+                        onClick={onOpenApiKeyModal}
+                        type="button"
+                        className="px-4 py-1.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold rounded-xl text-xs shadow-md shadow-amber-500/20 transition-all"
+                      >
+                        ১ মিনিটে ফ্রি API Key যুক্ত করুন
+                      </button>
+                    )}
+                  </div>
+                )}
+
                 {!callActive ? (
                   <button
-                    onClick={() => onStartCall(pattern)}
+                    onClick={() => {
+                      if (!getUserApiKey() && onOpenApiKeyModal) {
+                        onOpenApiKeyModal();
+                        return;
+                      }
+                      onStartCall(pattern);
+                    }}
                     disabled={connectionStatus === 'connecting'}
                     className="flex items-center gap-2.5 px-6 py-3.5 bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-black rounded-xl text-sm shadow-xl shadow-emerald-500/20 transition-all hover:scale-105 active:scale-95"
                   >

@@ -131,3 +131,33 @@ export function toggleLevelBookmark(levelId: number): UserStats {
   saveUserStats(updated);
   return updated;
 }
+
+const API_KEY_STORAGE = 'dovashi_gemini_user_api_key';
+
+export function getUserApiKey(): string {
+  try {
+    return localStorage.getItem(API_KEY_STORAGE) || '';
+  } catch (e) {
+    return '';
+  }
+}
+
+export function saveUserApiKey(key: string): void {
+  try {
+    if (key.trim()) {
+      localStorage.setItem(API_KEY_STORAGE, key.trim());
+    } else {
+      localStorage.removeItem(API_KEY_STORAGE);
+    }
+  } catch (e) {
+    console.error('Failed to save API key', e);
+  }
+}
+
+export function removeUserApiKey(): void {
+  try {
+    localStorage.removeItem(API_KEY_STORAGE);
+  } catch (e) {
+    console.error('Failed to remove API key', e);
+  }
+}

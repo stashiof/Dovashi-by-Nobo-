@@ -13,22 +13,27 @@ const PORT = 3000;
 
 app.use(express.json());
 
-// Initialize Gemini client
-let ai: GoogleGenAI | null = null;
-try {
-  if (process.env.GEMINI_API_KEY) {
-    ai = new GoogleGenAI({
-      apiKey: process.env.GEMINI_API_KEY,
+// Helper to get GoogleGenAI client for a custom user API key or fallback to environment variable
+function getGenAIClient(customApiKey?: string): GoogleGenAI | null {
+  const key = (customApiKey && customApiKey.trim()) ? customApiKey.trim() : process.env.GEMINI_API_KEY;
+  if (!key) return null;
+  try {
+    return new GoogleGenAI({
+      apiKey: key,
       httpOptions: {
         headers: {
           'User-Agent': 'aistudio-build',
         }
       }
     });
+  } catch (error) {
+    console.error("Failed to initialize GoogleGenAI:", error);
+    return null;
   }
-} catch (error) {
-  console.error("Failed to initialize GoogleGenAI:", error);
 }
+
+// Global server instance (if env key exists)
+const defaultAi = getGenAIClient();
 
 // Base System Instruction for Air - AI English Conversation Partner & Practice Coach (বাস্তব বাংলা মাধ্যমের সুপার কোচ)
 const AIR_BASE_INSTRUCTION = `You are "Air" — an extremely witty, hilarious, emotionally expressive, and incredibly sharp Bengali-medium AI English Practice Partner & Coach for "The English Master Key: 300 Patterns Mastery Course" (by Fahim Miya).
@@ -62,13 +67,56 @@ const AIR_BASE_INSTRUCTION = `You are "Air" — an extremely witty, hilarious, e
 const BASE_SYSTEM_INSTRUCTION = AIR_BASE_INSTRUCTION;
 
 app.get("/api/health", (req, res) => {
-  res.json({ status: "ok", hasApiKey: !!process.env.GEMINI_API_KEY });
+  res.json({ status: "ok", hasServerApiKey: !!process.env.GEMINI_API_KEY });
+});
+
+// Verify if a user's API Key is valid
+app.post("/api/verify-key", async (req, res) => {
+  const { apiKey } = req.body;
+  if (!apiKey || !apiKey.trim()) {
+    return res.status(400).json({ valid: false, error: "API Key খালি রাখা যাবে না।" });
+  }
+
+  try {
+    const client = getGenAIClient(apiKey);
+    if (!client) {
+      return res.status(400).json({ valid: false, error: "ইনভ্যালিড API Key ফরম্যাট।" });
+    }
+
+    // Light test call with gemini-3.7-flash
+    const testResponse = await client.models.generateContent({
+      model: "gemini-3.7-flash",
+      contents: [{ role: "user", parts: [{ text: "ping" }] }],
+      config: {
+        temperature: 0.1,
+      }
+    });
+
+    if (testResponse && testResponse.text) {
+      return res.json({ valid: true });
+    } else {
+      return res.json({ valid: true });
+    }
+  } catch (error: any) {
+    console.error("API Key Verification Error:", error);
+    const msg = error.message || "";
+    if (msg.includes("API key not valid") || msg.includes("API_KEY_INVALID")) {
+      return res.status(400).json({ valid: false, error: "ভুল API Key! অনুগ্রহ করে নিশ্চিত করুন কি-টি গুগল এআই স্টুডিও থেকে নিয়েছেন।" });
+    }
+    return res.status(400).json({ valid: false, error: error.message || "API Key যাচাই করতে সমস্যা হয়েছে।" });
+  }
 });
 
 // Evaluate a student's practice sentence with AI
 app.post("/api/evaluate-sentence", async (req, res) => {
-  if (!ai) {
-    return res.status(500).json({ error: "Gemini API key is not configured." });
+  const userApiKey = (req.headers["x-gemini-api-key"] as string) || req.body.apiKey;
+  const client = getGenAIClient(userApiKey);
+
+  if (!client) {
+    return res.status(401).json({ 
+      error: "AI ফিচার ব্যবহারের জন্য অনুগ্রহ করে আপনার নিজস্ব Gemini API Key যোগ করুন।", 
+      requireApiKey: true 
+    });
   }
 
   try {
@@ -89,7 +137,7 @@ Evaluate the sentence and reply strictly in valid JSON format:
   "alternativePhrases": ["alternative 1", "alternative 2"]
 }`;
 
-    const response = await ai.models.generateContent({
+    const response = await client.models.generateContent({
       model: "gemini-3.7-flash",
       contents: [{ role: "user", parts: [{ text: prompt }] }],
       config: {
@@ -108,8 +156,14 @@ Evaluate the sentence and reply strictly in valid JSON format:
 
 // Fallback HTTP chat endpoint for text tutoring
 app.post("/api/chat", async (req, res) => {
-  if (!ai) {
-    return res.status(500).json({ error: "Gemini API key is not configured." });
+  const userApiKey = (req.headers["x-gemini-api-key"] as string) || req.body.apiKey;
+  const client = getGenAIClient(userApiKey);
+
+  if (!client) {
+    return res.status(401).json({ 
+      error: "AI চ্যাট ব্যবহারের জন্য অনুগ্রহ করে আপনার নিজস্ব Gemini API Key যোগ করুন।", 
+      requireApiKey: true 
+    });
   }
   
   try {
@@ -130,7 +184,7 @@ Meaning: ${patternContext.bengaliMeaning}
 Focus on helping the student practice and master this specific pattern in conversation!`;
     }
 
-    const response = await ai.models.generateContent({
+    const response = await client.models.generateContent({
       model: "gemini-3.7-flash",
       contents: contents,
       config: {
@@ -168,17 +222,23 @@ async function startServer() {
   const wss = new WebSocketServer({ server, path: "/live" });
 
   wss.on("connection", async (clientWs, req) => {
-    if (!ai) {
-      clientWs.send(JSON.stringify({ error: "Gemini API key is missing on the server." }));
-      clientWs.close(1011, "Gemini API key not configured");
-      return;
-    }
-
     try {
+      // Parse pattern metadata and apiKey from connection URL if provided
+      const parsedUrl = url.parse(req.url || "", true);
+      const clientApiKey = (parsedUrl.query.apiKey as string) || (req.headers["x-gemini-api-key"] as string);
+      const clientAi = getGenAIClient(clientApiKey);
+
+      if (!clientAi) {
+        clientWs.send(JSON.stringify({ 
+          error: "AI কোচের সাথে কথা বলতে অনুগ্রহ করে আপনার Gemini API Key যুক্ত করুন।",
+          requireApiKey: true 
+        }));
+        clientWs.close(1008, "Gemini API key required");
+        return;
+      }
+
       console.log("Starting real-time Gemini Live audio session for English Master Key...");
 
-      // Parse pattern metadata from connection URL if provided
-      const parsedUrl = url.parse(req.url || "", true);
       const patternId = parsedUrl.query.patternId || "1";
       const patternStructure = parsedUrl.query.structure || "Subject + want(s) + to + Verb";
       const patternMeaning = parsedUrl.query.meaning || "কেউ কোনো কিছু করতে চায়";
@@ -216,7 +276,7 @@ AIR-এর বাস্তবমুখী কথপোকথন ও আড্ড
 5. **কল কেটে দেওয়া (Hang Up):**
    - যখন শিক্ষার্থী মুখে বলবে "আজকের মতো থাক", "কল কেটে দাও", "রাখছি", "bye Air", "পরে কথা বলব" — তখন আপনি সাথে সাথে 'hangUpCall' টুল কল করবেন এবং মিষ্টি বিদায় জানিয়ে ফোন কেটে দেবেন!`;
 
-      const sessionPromise = ai.live.connect({
+      const sessionPromise = clientAi.live.connect({
         model: "gemini-3.1-flash-live-preview",
         config: {
           responseModalities: [Modality.AUDIO],

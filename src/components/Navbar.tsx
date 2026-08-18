@@ -1,6 +1,6 @@
 import React from 'react';
 import { UserStats } from '../types';
-import { Sparkles, Flame, Bookmark, MessageSquare, BookOpen } from 'lucide-react';
+import { Sparkles, Flame, Bookmark, BookOpen, Key, Check } from 'lucide-react';
 
 interface NavbarProps {
   stats: UserStats;
@@ -8,6 +8,8 @@ interface NavbarProps {
   onOpenBookmarks: () => void;
   showingBookmarks: boolean;
   totalLevels: number;
+  hasApiKey: boolean;
+  onOpenApiKeyModal: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -15,7 +17,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenRoadmap,
   onOpenBookmarks,
   showingBookmarks,
-  totalLevels
+  totalLevels,
+  hasApiKey,
+  onOpenApiKeyModal
 }) => {
   const completedCount = stats.completedLevelIds.length;
   const progressPercent = Math.round((completedCount / totalLevels) * 100);
@@ -30,7 +34,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         >
           {/* Dovashi Official Logo */}
           <div className="relative w-11 h-11 rounded-2xl p-[2px] bg-gradient-to-br from-violet-600 via-indigo-500 to-amber-400 shadow-lg shadow-indigo-500/25 group-hover:scale-105 transition-all duration-300">
-            <div className="w-full h-full bg-slate-950 rounded-[14px] flex items-center justify-center p-1 overflow-hidden relative">
+            <div className="w-full h-full bg-white rounded-[14px] flex items-center justify-center p-1 overflow-hidden relative shadow-inner">
               <img 
                 src="/logo.svg" 
                 alt="Dovashi Logo" 
@@ -57,6 +61,22 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Stats & Gamification Badges */}
         <div className="flex items-center gap-2 sm:gap-3 flex-wrap justify-center font-['Hind_Siliguri',sans-serif]">
+          {/* API Key Connection Button */}
+          <button
+            id="navbar-api-key-btn"
+            onClick={onOpenApiKeyModal}
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold border transition-all ${
+              hasApiKey
+                ? 'bg-emerald-500/10 hover:bg-emerald-500/20 border-emerald-500/30 text-emerald-400'
+                : 'bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 border-amber-500/40 text-amber-300 animate-pulse'
+            }`}
+            title={hasApiKey ? 'Gemini API Key সংযুক্ত আছে' : 'Gemini API Key যোগ করুন'}
+          >
+            <Key className={`w-3.5 h-3.5 ${hasApiKey ? 'text-emerald-400' : 'text-amber-400'}`} />
+            <span>{hasApiKey ? 'API Key Connected' : 'API Key যোগ করুন'}</span>
+            {hasApiKey && <Check className="w-3 h-3 text-emerald-400" />}
+          </button>
+
           {/* Daily Streak */}
           <div className="flex items-center gap-1.5 bg-gradient-to-r from-orange-500/15 to-amber-500/15 border border-orange-500/30 text-orange-300 px-3.5 py-1.5 rounded-xl text-xs font-bold shadow-sm backdrop-blur-sm">
             <Flame className="w-4 h-4 text-orange-400 fill-orange-400 animate-pulse" />

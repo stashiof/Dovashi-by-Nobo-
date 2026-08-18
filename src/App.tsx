@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Navbar } from './components/Navbar';
 import { RoadmapMap } from './components/RoadmapMap';
 import { LevelLearningView } from './components/LevelLearningView';
+import { ApiKeyModal } from './components/ApiKeyModal';
 import { getAll300Patterns } from './data/masterPatternsData';
-import { getStoredUserStats, recordLevelProgress, toggleLevelBookmark } from './utils/storage';
+import { getStoredUserStats, recordLevelProgress, toggleLevelBookmark, getUserApiKey } from './utils/storage';
 import { useLiveCall } from './hooks/useLiveCall';
 import { Pattern, UserStats } from './types';
 
@@ -12,6 +13,8 @@ export default function App() {
   const [currentLevelId, setCurrentLevelId] = useState<number>(stats.currentLevelId || 1);
   const [currentView, setCurrentView] = useState<'roadmap' | 'level'>('roadmap');
   const [showingBookmarksOnly, setShowingBookmarksOnly] = useState(false);
+  const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
+  const [hasApiKey, setHasApiKey] = useState<boolean>(() => !!getUserApiKey());
 
   // Load all 300 patterns
   const allPatterns: Pattern[] = useMemo(() => getAll300Patterns(), []);
@@ -20,6 +23,10 @@ export default function App() {
   const activePattern = useMemo(() => {
     return allPatterns.find(p => p.id === currentLevelId) || allPatterns[0];
   }, [allPatterns, currentLevelId]);
+
+  const handleOpenApiKeyModal = useCallback(() => {
+    setIsApiKeyModalOpen(true);
+  }, []);
 
   // Real-time Gemini Live voice tutor
   const {
@@ -32,7 +39,7 @@ export default function App() {
     errorMessage,
     startCall,
     stopCall
-  } = useLiveCall();
+  } = useLiveCall(handleOpenApiKeyModal);
 
   // Scroll to top on view change
   useEffect(() => {
@@ -96,6 +103,8 @@ export default function App() {
       <Navbar
         stats={stats}
         totalLevels={300}
+        hasApiKey={hasApiKey}
+        onOpenApiKeyModal={handleOpenApiKeyModal}
         showingBookmarks={showingBookmarksOnly}
         onOpenRoadmap={() => {
           if (callActive) stopCall();
@@ -131,6 +140,7 @@ export default function App() {
             onPrevLevel={handlePrevLevel}
             onToggleBookmark={handleToggleBookmark}
             onRecordProgress={handleRecordProgress}
+            onOpenApiKeyModal={handleOpenApiKeyModal}
             callActive={callActive}
             tutorState={tutorState}
             audioLevel={audioLevel}
@@ -143,6 +153,13 @@ export default function App() {
           />
         )}
       </main>
+
+      {/* API Key Modal */}
+      <ApiKeyModal
+        isOpen={isApiKeyModalOpen}
+        onClose={() => setIsApiKeyModalOpen(false)}
+        onKeySaved={(key) => setHasApiKey(!!key)}
+      />
 
       {/* Persistent Audio Indicator if calling while in background */}
       {callActive && currentView === 'roadmap' && (
@@ -168,3 +185,4 @@ export default function App() {
     </div>
   );
 }
+
