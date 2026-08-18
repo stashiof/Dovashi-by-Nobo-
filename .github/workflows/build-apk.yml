@@ -29,8 +29,10 @@ jobs:
           npm install
           npm install @capacitor/core @capacitor/cli @capacitor/android
 
-      - name: Build Web Application
-        run: npm run build
+      - name: Build Web Application & Pre-generate Assets
+        run: |
+          npm run build
+          node scripts/generate-icons.js
 
       - name: Setup Capacitor Android
         run: |
@@ -59,31 +61,58 @@ jobs:
           RES_DIR="android/app/src/main/res"
 
           declare -A DENSITIES=(
-            ["mipmap-mdpi"]=48
-            ["mipmap-hdpi"]=72
-            ["mipmap-xhdpi"]=96
-            ["mipmap-xxhdpi"]=144
-            ["mipmap-xxxhdpi"]=192
+            ["mipmap-mdpi"]="assets/icon-48.png"
+            ["mipmap-hdpi"]="assets/icon-72.png"
+            ["mipmap-xhdpi"]="assets/icon-96.png"
+            ["mipmap-xxhdpi"]="assets/icon-144.png"
+            ["mipmap-xxxhdpi"]="assets/icon-192.png"
           )
 
           for FOLDER in "${!DENSITIES[@]}"; do
-            SIZE="${DENSITIES[$FOLDER]}"
+            SRC_PNG="${DENSITIES[$FOLDER]}"
             TARGET_PATH="$RES_DIR/$FOLDER"
             mkdir -p "$TARGET_PATH"
             
-            # Generate standard launcher, round launcher, and foreground icons using standard rsvg
-            rsvg-convert -w "$SIZE" -h "$SIZE" public/logo.svg -o "$TARGET_PATH/ic_launcher.png"
-            rsvg-convert -w "$SIZE" -h "$SIZE" public/logo.svg -o "$TARGET_PATH/ic_launcher_round.png"
-            rsvg-convert -w "$SIZE" -h "$SIZE" public/logo.svg -o "$TARGET_PATH/ic_launcher_foreground.png"
-            echo "Generated valid AAPT2 PNG icons for $FOLDER (${SIZE}x${SIZE})"
+            # Copy pre-rendered PNGs
+            if [ -f "$SRC_PNG" ]; then
+              cp "$SRC_PNG" "$TARGET_PATH/ic_launcher.png"
+              cp "$SRC_PNG" "$TARGET_PATH/ic_launcher_round.png"
+              cp "$SRC_PNG" "$TARGET_PATH/ic_launcher_foreground.png"
+            fi
+            echo "Injected valid AAPT2 PNG icons for $FOLDER from $SRC_PNG"
           done
 
-          # Copy vector foreground as fallback
-          mkdir -p "$RES_DIR/drawable" "$RES_DIR/drawable-v24"
+          # 3. Inject Vector Adaptive Drawables for Android 8+ (API 26 to 15)
+          mkdir -p "$RES_DIR/drawable" "$RES_DIR/drawable-v24" "$RES_DIR/mipmap-anydpi-v26"
+          
+          if [ -f "assets/ic_launcher_background.xml" ]; then
+            cp assets/ic_launcher_background.xml "$RES_DIR/drawable/ic_launcher_background.xml"
+            cp assets/ic_launcher_background.xml "$RES_DIR/drawable-v24/ic_launcher_background.xml"
+          fi
+
           if [ -f "assets/ic_launcher_foreground.xml" ]; then
             cp assets/ic_launcher_foreground.xml "$RES_DIR/drawable/ic_launcher_foreground.xml"
             cp assets/ic_launcher_foreground.xml "$RES_DIR/drawable-v24/ic_launcher_foreground.xml"
           fi
+
+          # Ensure adaptive icon XMLs in mipmap-anydpi-v26
+          cat << 'EOF' > "$RES_DIR/mipmap-anydpi-v26/ic_launcher.xml"
+<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@drawable/ic_launcher_background"/>
+    <foreground android:drawable="@drawable/ic_launcher_foreground"/>
+</adaptive-icon>
+EOF
+
+          cat << 'EOF' > "$RES_DIR/mipmap-anydpi-v26/ic_launcher_round.xml"
+<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@drawable/ic_launcher_background"/>
+    <foreground android:drawable="@drawable/ic_launcher_foreground"/>
+</adaptive-icon>
+EOF
+
+          echo "Successfully configured Adaptive & Legacy Android App Launcher Icons."
 
       - name: Enable ProGuard / R8 Obfuscation & App Protection
         run: |

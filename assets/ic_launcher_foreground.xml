@@ -5,91 +5,86 @@
     android:height="108dp"
     android:viewportWidth="512"
     android:viewportHeight="512">
-    
-    <!-- Background Circle/Card -->
+
+    <!-- Left Bubble (Voice Input) -->
     <path
-        android:pathData="M0,0h512v512h-512z"
-        android:fillColor="#0f172a" />
-        
-    <!-- Spine Gradient -->
-    <path
-        android:pathData="M100,70 Q150,70 150,120 L150,380 Q150,440 90,440 Q80,350 80,200 Q80,70 100,70 Z">
+        android:pathData="M140,140 H300 A40,40 0 0,1 340,180 V280 A40,40 0 0,1 300,320 H220 L140,380 V320 H140 A40,40 0 0,1 100,280 V180 A40,40 0 0,1 140,140 Z">
         <aapt:attr name="android:fillColor">
             <gradient
-                android:startX="0"
-                android:startY="70"
-                android:endX="0"
+                android:startX="100"
+                android:startY="140"
+                android:endX="340"
+                android:endY="380"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#FF2563EB" />
+                <item android:offset="1.0" android:color="#FF8B5CF6" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Right Bubble (AI Output) with subtle shadow layer -->
+    <!-- Shadow -->
+    <path
+        android:pathData="M246,208 H366 A40,40 0 0,1 406,248 V348 A40,40 0 0,1 366,388 H326 V448 L246,388 H246 A40,40 0 0,1 206,348 V248 A40,40 0 0,1 246,208 Z"
+        android:fillColor="#33000000" />
+
+    <!-- Right Bubble Body -->
+    <path
+        android:pathData="M250,200 H370 A40,40 0 0,1 410,240 V340 A40,40 0 0,1 370,380 H330 V440 L250,380 H250 A40,40 0 0,1 210,340 V240 A40,40 0 0,1 250,200 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="210"
+                android:startY="200"
+                android:endX="410"
                 android:endY="440"
                 android:type="linear">
-                <item android:offset="0.0" android:color="#FF8B5CF6" />
-                <item android:offset="0.5" android:color="#FF06B6D4" />
-                <item android:offset="1.0" android:color="#FF10B981" />
+                <item android:offset="0.0" android:color="#FFEC4899" />
+                <item android:offset="1.0" android:color="#FFF97316" />
             </gradient>
         </aapt:attr>
     </path>
-    
-    <!-- Outer D Arc -->
+
+    <!-- Audio Wave lines in Left Bubble (Green) -->
     <path
-        android:pathData="M120,70 Q320,60 410,170 Q470,260 410,350 Q330,450 140,450 Q280,430 350,350 Q400,280 350,190 Q280,110 120,70 Z">
-        <aapt:attr name="android:fillColor">
-            <gradient
-                android:startX="120"
-                android:startY="70"
-                android:endX="450"
-                android:endY="450"
-                android:type="linear">
-                <item android:offset="0.0" android:color="#FF3B82F6" />
-                <item android:offset="0.35" android:color="#FFEC4899" />
-                <item android:offset="0.7" android:color="#FFF97316" />
-                <item android:offset="1.0" android:color="#FFEAB308" />
-            </gradient>
-        </aapt:attr>
-    </path>
-    
-    <!-- Leaf on Lower Left -->
+        android:pathData="M170,210 L170,230"
+        android:strokeWidth="12"
+        android:strokeColor="#FF10B981"
+        android:strokeLineCap="round" />
     <path
-        android:pathData="M90,440 C90,410 130,390 150,360 C170,410 130,450 90,440 Z"
+        android:pathData="M195,180 L195,260"
+        android:strokeWidth="12"
+        android:strokeColor="#FF10B981"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M220,160 L220,280"
+        android:strokeWidth="12"
+        android:strokeColor="#FF10B981"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M245,190 L245,250"
+        android:strokeWidth="12"
+        android:strokeColor="#FF10B981"
+        android:strokeLineCap="round" />
+
+    <!-- Translated text lines in Right Bubble (Purple) -->
+    <path
+        android:pathData="M260,290 L350,290"
+        android:strokeWidth="14"
+        android:strokeColor="#FF8B5CF6"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M260,325 L310,325"
+        android:strokeWidth="14"
+        android:strokeColor="#FF8B5CF6"
+        android:strokeLineCap="round" />
+
+    <!-- Big AI Sparkle (Green) -->
+    <path
+        android:pathData="M350,230 Q350,250 370,250 Q350,250 350,270 Q350,250 330,250 Q350,250 350,230 Z"
         android:fillColor="#FF10B981" />
-        
-    <!-- Upper Chat Bubble -->
+
+    <!-- Small AI Sparkle (Purple) -->
     <path
-        android:pathData="M160,170 C160,135 290,135 290,170 C290,200 250,215 220,220 C180,225 160,200 160,170 Z">
-        <aapt:attr name="android:fillColor">
-            <gradient
-                android:startX="160"
-                android:startY="135"
-                android:endX="290"
-                android:endY="220"
-                android:type="linear">
-                <item android:offset="0.0" android:color="#FFC084FC" />
-                <item android:offset="1.0" android:color="#FF3B82F6" />
-            </gradient>
-        </aapt:attr>
-    </path>
-    
-    <!-- Upper Dots -->
-    <path android:pathData="M195,172m-7,0a7,7 0 1,0 14,0a7,7 0 1,0 -14,0" android:fillColor="#FFFFFFFF" />
-    <path android:pathData="M220,172m-7,0a7,7 0 1,0 14,0a7,7 0 1,0 -14,0" android:fillColor="#FFFFFFFF" />
-    <path android:pathData="M245,172m-7,0a7,7 0 1,0 14,0a7,7 0 1,0 -14,0" android:fillColor="#FFFFFFFF" />
-    
-    <!-- Lower Chat Bubble -->
-    <path
-        android:pathData="M160,270 C160,235 280,235 280,270 C280,305 240,320 200,320 C170,320 160,300 160,270 Z">
-        <aapt:attr name="android:fillColor">
-            <gradient
-                android:startX="160"
-                android:startY="235"
-                android:endX="280"
-                android:endY="320"
-                android:type="linear">
-                <item android:offset="0.0" android:color="#FF10B981" />
-                <item android:offset="1.0" android:color="#FFEAB308" />
-            </gradient>
-        </aapt:attr>
-    </path>
-    
-    <!-- Lower Dots -->
-    <path android:pathData="M195,272m-7,0a7,7 0 1,0 14,0a7,7 0 1,0 -14,0" android:fillColor="#FF0F172A" />
-    <path android:pathData="M220,272m-7,0a7,7 0 1,0 14,0a7,7 0 1,0 -14,0" android:fillColor="#FF0F172A" />
-    <path android:pathData="M245,272m-7,0a7,7 0 1,0 14,0a7,7 0 1,0 -14,0" android:fillColor="#FF0F172A" />
+        android:pathData="M320,220 Q320,230 330,230 Q320,230 320,240 Q320,230 310,230 Q320,230 320,220 Z"
+        android:fillColor="#FF8B5CF6" />
 </vector>
