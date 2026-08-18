@@ -18,6 +18,7 @@ const sizes = [
   { size: 432, name: 'assets/icon-432.png' },
   { size: 512, name: 'assets/icon-512.png' },
   { size: 1024, name: 'assets/icon-1024.png' },
+  { size: 512, name: 'assets/splash.png' },
   { size: 512, name: 'public/logo.png' },
   { size: 192, name: 'public/icon-192.png' },
   { size: 512, name: 'public/icon-512.png' },
@@ -31,7 +32,7 @@ for (const { size, name } of sizes) {
       mode: 'width',
       value: size,
     },
-    shapeRendering: 2, // crispEdges / geometricPrecision
+    shapeRendering: 2,
     textRendering: 1,
     imageRendering: 0,
   });
@@ -44,5 +45,4 @@ for (const { size, name } of sizes) {
   console.log(`Generated ${name} (${size}x${size})`);
 }
 
-console.log('All icons generated successfully!');
-
+console.log('All icons and splash screens generated successfully!');

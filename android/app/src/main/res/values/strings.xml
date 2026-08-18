@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Dovashi</string>
+    <string name="title_activity_main">Dovashi</string>
+    <string name="package_name">com.nobo.dovashi</string>
+    <string name="custom_url_scheme">com.nobo.dovashi</string>
+</resources>

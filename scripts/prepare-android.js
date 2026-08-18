@@ -94,7 +94,32 @@ for (const { folder, src } of densities) {
   }
 }
 
-// 4. Inject Vector Adaptive Drawables for Android 8+ (API 26+)
+// 4. Inject Splash Screens into all drawable folders
+const splashDensities = [
+  'drawable',
+  'drawable-port-mdpi',
+  'drawable-port-hdpi',
+  'drawable-port-xhdpi',
+  'drawable-port-xxhdpi',
+  'drawable-port-xxxhdpi',
+  'drawable-land-mdpi',
+  'drawable-land-hdpi',
+  'drawable-land-xhdpi',
+  'drawable-land-xxhdpi',
+  'drawable-land-xxxhdpi',
+];
+
+const splashSrc = path.resolve('assets/splash.png');
+if (fs.existsSync(splashSrc)) {
+  for (const drawFolder of splashDensities) {
+    const drawDir = path.join(resDir, drawFolder);
+    fs.mkdirSync(drawDir, { recursive: true });
+    fs.copyFileSync(splashSrc, path.join(drawDir, 'splash.png'));
+  }
+  console.log('✓ Replaced all old splash screens with new logo');
+}
+
+// 5. Inject Vector Adaptive Drawables for Android 8+ (API 26+)
 const drawableDir = path.join(resDir, 'drawable');
 const drawableV24Dir = path.join(resDir, 'drawable-v24');
 const anyDpiDir = path.join(resDir, 'mipmap-anydpi-v26');
@@ -126,7 +151,7 @@ fs.writeFileSync(path.join(anyDpiDir, 'ic_launcher.xml'), adaptiveXml, 'utf8');
 fs.writeFileSync(path.join(anyDpiDir, 'ic_launcher_round.xml'), adaptiveXml, 'utf8');
 console.log('✓ Configured Adaptive Vector Drawables for modern Android');
 
-// 5. Update build.gradle & Proguard Rules
+// 6. Update build.gradle & Proguard Rules
 const buildGradlePath = path.resolve('android/app/build.gradle');
 if (fs.existsSync(buildGradlePath)) {
   let gradleContent = fs.readFileSync(buildGradlePath, 'utf8');
