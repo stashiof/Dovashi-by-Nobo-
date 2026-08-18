@@ -106,26 +106,13 @@ export const LevelLearningView: React.FC<LevelLearningViewProps> = ({
 
     setEvaluatingMap(prev => ({ ...prev, [practiceId]: true }));
     try {
-      const { getApiUrl } = await import('../config');
-      const res = await fetch(getApiUrl('/api/evaluate-sentence'), {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'x-gemini-api-key': userApiKey
-        },
-        body: JSON.stringify({
-          patternId: pattern.id,
-          structure: pattern.structure,
-          promptBn: promptBn,
-          userSentence: userText,
-          apiKey: userApiKey
-        })
+      const { evaluateSentenceDirectly } = await import('../utils/aiEvaluator');
+      const data = await evaluateSentenceDirectly(userApiKey, {
+        patternId: pattern.id,
+        structure: pattern.structure,
+        promptBn: promptBn,
+        userSentence: userText
       });
-      const data = await res.json();
-
-      if (data.requireApiKey && onOpenApiKeyModal) {
-        onOpenApiKeyModal();
-      }
 
       setPracticeFeedbacks(prev => ({ ...prev, [practiceId]: data }));
 
@@ -133,8 +120,8 @@ export const LevelLearningView: React.FC<LevelLearningViewProps> = ({
         confetti({ particleCount: 40, spread: 60, origin: { y: 0.7 } });
         onRecordProgress(1, 0, true, false);
       }
-    } catch (e) {
-      console.error(e);
+    } catch (e: any) {
+      console.error("Evaluation error:", e);
       // Fallback local check
       const isClose = userText.length > 5;
       setPracticeFeedbacks(prev => ({
@@ -142,7 +129,7 @@ export const LevelLearningView: React.FC<LevelLearningViewProps> = ({
         [practiceId]: {
           isCorrect: isClose,
           accuracyScore: isClose ? 85 : 50,
-          feedbackBn: 'আপনার বাক্যটি চমৎকার হয়েছে! প্যাটার্নের সঠিক প্রয়োগ নিশ্চিত করুন।',
+          feedbackBn: 'আপনার বাক্যটি সংরক্ষিত হয়েছে। প্যাটার্ন মিলিয়ে আবার চেষ্টা করুন।',
           suggestedVersion: userText
         }
       }));
