@@ -15,7 +15,9 @@ const sizes = [
   { size: 96, name: 'assets/icon-96.png' },
   { size: 144, name: 'assets/icon-144.png' },
   { size: 192, name: 'assets/icon-192.png' },
+  { size: 432, name: 'assets/icon-432.png' },
   { size: 512, name: 'assets/icon-512.png' },
+  { size: 1024, name: 'assets/icon-1024.png' },
   { size: 512, name: 'public/logo.png' },
   { size: 192, name: 'public/icon-192.png' },
   { size: 512, name: 'public/icon-512.png' },
@@ -29,6 +31,9 @@ for (const { size, name } of sizes) {
       mode: 'width',
       value: size,
     },
+    shapeRendering: 2, // crispEdges / geometricPrecision
+    textRendering: 1,
+    imageRendering: 0,
   });
   const pngData = resvg.render();
   const pngBuffer = pngData.asPng();
@@ -40,3 +45,4 @@ for (const { size, name } of sizes) {
 }
 
 console.log('All icons generated successfully!');
+

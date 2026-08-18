@@ -65,7 +65,7 @@ jobs:
             ["mipmap-hdpi"]="assets/icon-72.png"
             ["mipmap-xhdpi"]="assets/icon-96.png"
             ["mipmap-xxhdpi"]="assets/icon-144.png"
-            ["mipmap-xxxhdpi"]="assets/icon-192.png"
+            ["mipmap-xxxhdpi"]="assets/icon-512.png"
           )
 
           for FOLDER in "${!DENSITIES[@]}"; do

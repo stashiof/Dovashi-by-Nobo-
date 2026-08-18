@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { getUserApiKey, saveUserApiKey, removeUserApiKey } from '../utils/storage';
+import { GoogleGenAI } from '@google/genai';
 
 interface ApiKeyModalProps {
   isOpen: boolean;
@@ -49,16 +50,14 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
     setStatusMessage('');
 
     try {
-      const { getApiUrl } = await import('../config');
-      const res = await fetch(getApiUrl('/api/verify-key'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apiKey: trimmed })
+      const ai = new GoogleGenAI({ apiKey: trimmed });
+      const testResponse = await ai.models.generateContent({
+        model: "gemini-3.7-flash",
+        contents: [{ role: "user", parts: [{ text: "ping" }] }],
+        config: { temperature: 0.1 }
       });
 
-      const data = await res.json();
-
-      if (res.ok && data.valid) {
+      if (testResponse && testResponse.text) {
         saveUserApiKey(trimmed);
         setCurrentSavedKey(trimmed);
         setVerificationStatus('success');
@@ -68,19 +67,24 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
           onClose();
         }, 1200);
       } else {
-        setVerificationStatus('error');
-        setStatusMessage(data.error || 'ভুল API Key! অনুগ্রহ করে নিশ্চিত করুন কি-টি গুগল এআই স্টুডিও থেকে নেওয়া।');
+        throw new Error('No response');
       }
     } catch (err: any) {
-      // In case offline or network error, still save locally
-      saveUserApiKey(trimmed);
-      setCurrentSavedKey(trimmed);
-      setVerificationStatus('success');
-      setStatusMessage('API Key ডিভাইসে সেভ হয়েছে!');
-      if (onKeySaved) onKeySaved(trimmed);
-      setTimeout(() => {
-        onClose();
-      }, 1000);
+      const msg = err.message || "";
+      if (msg.includes("API key not valid") || msg.includes("API_KEY_INVALID")) {
+        setVerificationStatus('error');
+        setStatusMessage('ভুল API Key! অনুগ্রহ করে নিশ্চিত করুন কি-টি গুগল এআই স্টুডিও থেকে নেওয়া।');
+      } else {
+        // Fallback for network issues
+        saveUserApiKey(trimmed);
+        setCurrentSavedKey(trimmed);
+        setVerificationStatus('success');
+        setStatusMessage('API Key ডিভাইসে সেভ হয়েছে!');
+        if (onKeySaved) onKeySaved(trimmed);
+        setTimeout(() => {
+          onClose();
+        }, 1000);
+      }
     } finally {
       setIsVerifying(false);
     }

@@ -1,15 +1,19 @@
-export const isNativeApp = !!(window as any).Capacitor?.isNative;
+export const isNativeApp = 
+  !!(window as any).Capacitor?.isNative || 
+  window.location.protocol === 'file:' || 
+  window.location.protocol.startsWith('capacitor') || 
+  window.location.protocol.startsWith('ionic') || 
+  window.location.hostname === 'localhost' || 
+  window.location.hostname === '127.0.0.1';
+
+const CLOUD_URL = 'ais-pre-fo3owuqjpczzsi5hj5eyh3-348785349910.asia-southeast1.run.app';
 
 export const BACKEND_URL = isNativeApp 
-  ? ((import.meta as any).env?.VITE_BACKEND_HOST 
-      ? `https://${(import.meta as any).env.VITE_BACKEND_HOST}` 
-      : 'https://ais-pre-fo3owuqjpczzsi5hj5eyh3-348785349910.asia-southeast1.run.app')
+  ? `https://${CLOUD_URL}`
   : '';
 
 export const BACKEND_WS_URL = isNativeApp
-  ? ((import.meta as any).env?.VITE_BACKEND_HOST 
-      ? `wss://${(import.meta as any).env.VITE_BACKEND_HOST}` 
-      : 'wss://ais-pre-fo3owuqjpczzsi5hj5eyh3-348785349910.asia-southeast1.run.app')
+  ? `wss://${CLOUD_URL}`
   : (window.location.protocol === 'https:' ? `wss://${window.location.host}` : `ws://${window.location.host}`);
 
 export const getApiUrl = (path: string) => {

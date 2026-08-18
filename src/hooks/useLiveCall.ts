@@ -390,10 +390,10 @@ export function useLiveCall(onRequireApiKey?: () => void) {
         }
       };
 
-      ws.onerror = (e) => {
-        console.error("WebSocket client error:", e);
+      ws.onerror = (e: any) => {
+        console.error("WebSocket client error event:", e);
         setConnectionStatus('error');
-        setErrorMessage("Connection to live audio session failed.");
+        setErrorMessage(`Connection to live audio session failed. URL: ${wsUrl}`);
       };
 
       ws.onclose = () => {
