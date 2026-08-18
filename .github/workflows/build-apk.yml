@@ -54,10 +54,62 @@ jobs:
                   content = content.replace('<application', perms + '\n    <application')
                   with open(manifest_path, 'w', encoding='utf-8') as f:
                       f.write(content)
-                  print('Permissions injected successfully')
+                  print('Permissions injected into AndroidManifest.xml')
           "
 
-          # 2. Render & inject high-resolution AAPT2-compliant PNGs into all mipmap folders
+          # 2. Inject MainActivity with runtime Microphone permissions & WebChromeClient audio grant
+          python3 -c "
+          import os
+          main_activity_dir = 'android/app/src/main/java/com/nobo/dovashi'
+          os.makedirs(main_activity_dir, exist_ok=True)
+          main_activity_path = os.path.join(main_activity_dir, 'MainActivity.java')
+          
+          activity_code = '''package com.nobo.dovashi;
+
+import android.Manifest;
+import android.content.pm.PackageManager;
+import android.os.Bundle;
+import android.webkit.PermissionRequest;
+import android.webkit.WebChromeClient;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
+import com.getcapacitor.BridgeActivity;
+
+public class MainActivity extends BridgeActivity {
+    @Override
+    public void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, new String[]{
+                Manifest.permission.RECORD_AUDIO,
+                Manifest.permission.MODIFY_AUDIO_SETTINGS
+            }, 101);
+        }
+    }
+
+    @Override
+    public void onStart() {
+        super.onStart();
+        if (this.bridge != null && this.bridge.getWebView() != null) {
+            this.bridge.getWebView().setWebChromeClient(new WebChromeClient() {
+                @Override
+                public void onPermissionRequest(final PermissionRequest request) {
+                    runOnUiThread(() -> {
+                        request.grant(request.getResources());
+                    });
+                }
+            });
+        }
+    }
+}
+'''
+          with open(main_activity_path, 'w', encoding='utf-8') as f:
+              f.write(activity_code)
+          print('Injected runtime audio permission handler into MainActivity.java')
+          "
+
+          # 3. Render & inject high-resolution AAPT2-compliant PNGs into all mipmap folders
           RES_DIR="android/app/src/main/res"
 
           declare -A DENSITIES=(
@@ -75,24 +127,24 @@ jobs:
             
             # Copy pre-rendered PNGs
             if [ -f "$SRC_PNG" ]; then
-              cp "$SRC_PNG" "$TARGET_PATH/ic_launcher.png"
-              cp "$SRC_PNG" "$TARGET_PATH/ic_launcher_round.png"
-              cp "$SRC_PNG" "$TARGET_PATH/ic_launcher_foreground.png"
+              cp -f "$SRC_PNG" "$TARGET_PATH/ic_launcher.png"
+              cp -f "$SRC_PNG" "$TARGET_PATH/ic_launcher_round.png"
+              cp -f "$SRC_PNG" "$TARGET_PATH/ic_launcher_foreground.png"
             fi
             echo "Injected valid AAPT2 PNG icons for $FOLDER from $SRC_PNG"
           done
 
-          # 3. Inject Vector Adaptive Drawables for Android 8+ (API 26 to 15)
+          # 4. Inject Vector Adaptive Drawables for Android 8+ (API 26 to 15)
           mkdir -p "$RES_DIR/drawable" "$RES_DIR/drawable-v24" "$RES_DIR/mipmap-anydpi-v26"
           
           if [ -f "assets/ic_launcher_background.xml" ]; then
-            cp assets/ic_launcher_background.xml "$RES_DIR/drawable/ic_launcher_background.xml"
-            cp assets/ic_launcher_background.xml "$RES_DIR/drawable-v24/ic_launcher_background.xml"
+            cp -f assets/ic_launcher_background.xml "$RES_DIR/drawable/ic_launcher_background.xml"
+            cp -f assets/ic_launcher_background.xml "$RES_DIR/drawable-v24/ic_launcher_background.xml"
           fi
 
           if [ -f "assets/ic_launcher_foreground.xml" ]; then
-            cp assets/ic_launcher_foreground.xml "$RES_DIR/drawable/ic_launcher_foreground.xml"
-            cp assets/ic_launcher_foreground.xml "$RES_DIR/drawable-v24/ic_launcher_foreground.xml"
+            cp -f assets/ic_launcher_foreground.xml "$RES_DIR/drawable/ic_launcher_foreground.xml"
+            cp -f assets/ic_launcher_foreground.xml "$RES_DIR/drawable-v24/ic_launcher_foreground.xml"
           fi
 
           # Ensure adaptive icon XMLs in mipmap-anydpi-v26
@@ -102,7 +154,7 @@ jobs:
           echo '    <foreground android:drawable="@drawable/ic_launcher_foreground"/>' >> "$RES_DIR/mipmap-anydpi-v26/ic_launcher.xml"
           echo '</adaptive-icon>' >> "$RES_DIR/mipmap-anydpi-v26/ic_launcher.xml"
 
-          cp "$RES_DIR/mipmap-anydpi-v26/ic_launcher.xml" "$RES_DIR/mipmap-anydpi-v26/ic_launcher_round.xml"
+          cp -f "$RES_DIR/mipmap-anydpi-v26/ic_launcher.xml" "$RES_DIR/mipmap-anydpi-v26/ic_launcher_round.xml"
 
           echo "Successfully configured Adaptive & Legacy Android App Launcher Icons."
 
