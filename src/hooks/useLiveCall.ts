@@ -185,7 +185,7 @@ export function useLiveCall(onRequireApiKey?: () => void) {
         // 1. Send Setup Handshake to Gemini Live
         const setupMessage = {
           setup: {
-            model: "models/gemini-2.5-flash-native-audio-latest",
+            model: "models/gemini-2.0-flash",
             generationConfig: {
               responseModalities: ["AUDIO"],
               speechConfig: {

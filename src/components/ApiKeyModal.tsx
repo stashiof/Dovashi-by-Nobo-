@@ -87,7 +87,7 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
     try {
       const ai = new GoogleGenAI({ apiKey: trimmed });
       const testResponse = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
+        model: "gemini-2.0-flash",
         contents: [{ role: "user", parts: [{ text: "ping" }] }],
         config: { temperature: 0.1 }
       });
