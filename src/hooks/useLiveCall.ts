@@ -171,7 +171,7 @@ export function useLiveCall(onRequireApiKey?: () => void) {
 
       // Connect directly to Google's official Gemini Live Multimodal WebSocket Endpoint
       // This works 100% on both Web and Android APK without requiring a Node server on the phone!
-      const wsUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${encodeURIComponent(userApiKey.trim())}`;
+      const wsUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key=${encodeURIComponent(userApiKey.trim())}`;
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
@@ -185,7 +185,7 @@ export function useLiveCall(onRequireApiKey?: () => void) {
         // 1. Send Setup Handshake to Gemini Live
         const setupMessage = {
           setup: {
-            model: "models/gemini-2.0-flash",
+            model: "models/gemini-3.1-flash-live-preview",
             generationConfig: {
               responseModalities: ["AUDIO"],
               speechConfig: {
@@ -197,6 +197,7 @@ export function useLiveCall(onRequireApiKey?: () => void) {
               }
             },
             systemInstruction: {
+              role: "user",
               parts: [{ text: systemInstruction }]
             },
             tools: [
