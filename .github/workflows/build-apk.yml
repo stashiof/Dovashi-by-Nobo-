@@ -14,6 +14,11 @@ jobs:
       - name: Checkout Source Code
         uses: actions/checkout@v4
 
+      - name: Setup System Utilities (Image Rasterizer)
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y librsvg2-bin imagemagick
+
       - name: Setup Node.js 22
         uses: actions/setup-node@v4
         with:
@@ -34,10 +39,9 @@ jobs:
 
       - name: Inject Full Android App Icons and Permissions
         run: |
+          # 1. Update AndroidManifest.xml permissions
           python3 -c "
-          import os, shutil
-
-          # 1. Update AndroidManifest.xml
+          import os
           manifest_path = 'android/app/src/main/AndroidManifest.xml'
           if os.path.exists(manifest_path):
               with open(manifest_path, 'r', encoding='utf-8') as f:
@@ -49,40 +53,37 @@ jobs:
                   with open(manifest_path, 'w', encoding='utf-8') as f:
                       f.write(content)
                   print('Permissions injected successfully')
-
-          # 2. Inject Dovashi PNG App Icons across all Android mipmap directories
-          res_dir = 'android/app/src/main/res'
-          
-          # Mapping from density to source icon
-          density_map = {
-              'mipmap-mdpi': 'assets/icon-48.png',
-              'mipmap-hdpi': 'assets/icon-72.png',
-              'mipmap-xhdpi': 'assets/icon-96.png',
-              'mipmap-xxhdpi': 'assets/icon-144.png',
-              'mipmap-xxxhdpi': 'assets/icon-192.png',
-          }
-
-          for folder, src_icon in density_map.items():
-              target_dir = os.path.join(res_dir, folder)
-              os.makedirs(target_dir, exist_ok=True)
-              if os.path.exists(src_icon):
-                  # Replace standard launcher icon, round icon, and foreground
-                  shutil.copy(src_icon, os.path.join(target_dir, 'ic_launcher.png'))
-                  shutil.copy(src_icon, os.path.join(target_dir, 'ic_launcher_round.png'))
-                  shutil.copy(src_icon, os.path.join(target_dir, 'ic_launcher_foreground.png'))
-                  print(f'Replaced app icons in {folder} with {src_icon}')
-
-          # Also copy vector foreground
-          drawable_dir = os.path.join(res_dir, 'drawable')
-          drawable_v24 = os.path.join(res_dir, 'drawable-v24')
-          os.makedirs(drawable_dir, exist_ok=True)
-          os.makedirs(drawable_v24, exist_ok=True)
-
-          if os.path.exists('assets/ic_launcher_foreground.xml'):
-              shutil.copy('assets/ic_launcher_foreground.xml', os.path.join(drawable_dir, 'ic_launcher_foreground.xml'))
-              shutil.copy('assets/ic_launcher_foreground.xml', os.path.join(drawable_v24, 'ic_launcher_foreground.xml'))
-              print('Copied custom Dovashi vector icon to drawables')
           "
+
+          # 2. Render & inject high-resolution AAPT2-compliant PNGs into all mipmap folders
+          RES_DIR="android/app/src/main/res"
+
+          declare -A DENSITIES=(
+            ["mipmap-mdpi"]=48
+            ["mipmap-hdpi"]=72
+            ["mipmap-xhdpi"]=96
+            ["mipmap-xxhdpi"]=144
+            ["mipmap-xxxhdpi"]=192
+          )
+
+          for FOLDER in "${!DENSITIES[@]}"; do
+            SIZE="${DENSITIES[$FOLDER]}"
+            TARGET_PATH="$RES_DIR/$FOLDER"
+            mkdir -p "$TARGET_PATH"
+            
+            # Generate standard launcher, round launcher, and foreground icons using standard rsvg
+            rsvg-convert -w "$SIZE" -h "$SIZE" public/logo.svg -o "$TARGET_PATH/ic_launcher.png"
+            rsvg-convert -w "$SIZE" -h "$SIZE" public/logo.svg -o "$TARGET_PATH/ic_launcher_round.png"
+            rsvg-convert -w "$SIZE" -h "$SIZE" public/logo.svg -o "$TARGET_PATH/ic_launcher_foreground.png"
+            echo "Generated valid AAPT2 PNG icons for $FOLDER (${SIZE}x${SIZE})"
+          done
+
+          # Copy vector foreground as fallback
+          mkdir -p "$RES_DIR/drawable" "$RES_DIR/drawable-v24"
+          if [ -f "assets/ic_launcher_foreground.xml" ]; then
+            cp assets/ic_launcher_foreground.xml "$RES_DIR/drawable/ic_launcher_foreground.xml"
+            cp assets/ic_launcher_foreground.xml "$RES_DIR/drawable-v24/ic_launcher_foreground.xml"
+          fi
 
       - name: Enable ProGuard / R8 Obfuscation & App Protection
         run: |
