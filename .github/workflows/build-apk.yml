@@ -23,8 +23,7 @@ jobs:
 
       - name: Install Project Dependencies
         run: |
-          npm install
-          npm install @capacitor/core @capacitor/cli @capacitor/android
+          npm install --no-audit --no-fund --prefer-offline
 
       - name: Build Web Application & Pre-generate Assets
         run: |
