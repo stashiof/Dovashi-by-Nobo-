@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Key, ShieldCheck, ExternalLink, Check, AlertTriangle, 
-  Trash2, Eye, EyeOff, Sparkles, X, Lock, CheckCircle2, Loader2
+  Trash2, Eye, EyeOff, Sparkles, X, Lock, CheckCircle2, Loader2, ClipboardPaste
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { getUserApiKey, saveUserApiKey, removeUserApiKey } from '../utils/storage';
@@ -37,6 +37,41 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
 
   if (!isOpen) return null;
 
+  const handlePasteFromClipboard = async () => {
+    try {
+      if (navigator.clipboard && navigator.clipboard.readText) {
+        const text = await navigator.clipboard.readText();
+        if (text && text.trim()) {
+          setApiKeyInput(text.trim());
+          setVerificationStatus('idle');
+          setStatusMessage('✅ ক্লিপবোর্ড থেকে API Key পেস্ট করা হয়েছে!');
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn("Direct clipboard read restricted in iframe sandbox:", e);
+    }
+
+    // Direct universal fallback for iframe preview: native prompt
+    try {
+      const pasted = window.prompt("আপনার কপি করা Gemini API Key টি নিচে পেস্ট করে OK দিন:");
+      if (pasted && pasted.trim()) {
+        setApiKeyInput(pasted.trim());
+        setVerificationStatus('idle');
+        setStatusMessage('✅ API Key সফলভাবে পেস্ট হয়েছে!');
+        return;
+      }
+    } catch (err) {}
+
+    // Fallback: Focus input
+    const inputEl = document.getElementById('gemini-api-key-input') as HTMLInputElement;
+    if (inputEl) {
+      inputEl.focus();
+      inputEl.select();
+    }
+    setStatusMessage('কীবোর্ডের উপরের ক্লিপবোর্ড বার (Clipboard) থেকে পেস্ট করুন।');
+  };
+
   const handleTestAndSave = async () => {
     const trimmed = apiKeyInput.trim();
     if (!trimmed) {
@@ -52,7 +87,7 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
     try {
       const ai = new GoogleGenAI({ apiKey: trimmed });
       const testResponse = await ai.models.generateContent({
-        model: "gemini-3.7-flash",
+        model: "gemini-2.5-flash",
         contents: [{ role: "user", parts: [{ text: "ping" }] }],
         config: { temperature: 0.1 }
       });
@@ -75,7 +110,7 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
         setVerificationStatus('error');
         setStatusMessage('ভুল API Key! অনুগ্রহ করে নিশ্চিত করুন কি-টি গুগল এআই স্টুডিও থেকে নেওয়া।');
       } else {
-        // Fallback for network issues
+        // Save anyway for offline/custom network
         saveUserApiKey(trimmed);
         setCurrentSavedKey(trimmed);
         setVerificationStatus('success');
@@ -158,11 +193,11 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
             </div>
             <div className="flex items-start gap-2">
               <span className="w-5 h-5 rounded-full bg-slate-800 text-amber-400 font-bold flex items-center justify-center shrink-0 text-[11px]">২</span>
-              <span><strong>"Create API key"</strong> বাটনে ক্লিক করে কি তৈরি ও কপি করুন।</span>
+              <span><strong>&quot;Create API key&quot;</strong> বাটনে ক্লিক করে কি তৈরি ও কপি করুন।</span>
             </div>
             <div className="flex items-start gap-2">
               <span className="w-5 h-5 rounded-full bg-slate-800 text-amber-400 font-bold flex items-center justify-center shrink-0 text-[11px]">৩</span>
-              <span>নিচের বক্সে পেস্ট করে <strong>"সংরক্ষণ করুন"</strong> দিন!</span>
+              <span>নিচের <strong>&quot;📋 পেস্ট করুন&quot;</strong> বাটনে চাপ দিন বা বক্সে পেস্ট করে সংরক্ষণ করুন!</span>
             </div>
 
             <div className="pt-2">
@@ -179,29 +214,54 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
             </div>
           </div>
 
-          {/* API Key Input */}
+          {/* API Key Input + Paste Action */}
           <div className="space-y-2 mb-4">
-            <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider">
-              আপনার Gemini API Key
-            </label>
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                আপনার Gemini API Key
+              </label>
+              <button
+                type="button"
+                onClick={handlePasteFromClipboard}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-bold transition-colors cursor-pointer"
+                title="ক্লিপবোর্ড থেকে সরাসরি পেস্ট করুন"
+              >
+                <ClipboardPaste className="w-3.5 h-3.5" />
+                <span>📋 পেস্ট করুন</span>
+              </button>
+            </div>
             <div className="relative">
               <input
                 id="gemini-api-key-input"
                 type={showKey ? 'text' : 'password'}
                 value={apiKeyInput}
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="none"
+                spellCheck="false"
+                style={{ WebkitUserSelect: 'text', userSelect: 'text', WebkitTouchCallout: 'default', touchAction: 'manipulation' }}
                 onChange={(e) => {
                   setApiKeyInput(e.target.value);
                   setVerificationStatus('idle');
                   setStatusMessage('');
                 }}
+                onPaste={(e) => {
+                  const pasted = e.clipboardData.getData('text');
+                  if (pasted) {
+                    e.preventDefault();
+                    setApiKeyInput(pasted.trim());
+                    setVerificationStatus('idle');
+                    setStatusMessage('API Key পেস্ট করা হয়েছে!');
+                  }
+                }}
                 placeholder="AIzaSy..."
-                className="w-full bg-slate-950 border border-slate-700 focus:border-amber-400 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20 pr-12 font-mono"
+                className="w-full bg-slate-950 border border-slate-700 focus:border-amber-400 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500/20 pr-12 font-mono select-text"
               />
               <button
                 type="button"
                 id="toggle-show-api-key-btn"
                 onClick={() => setShowKey(!showKey)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 p-1"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 p-1.5"
                 title={showKey ? "Hide key" : "Show key"}
               >
                 {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -288,3 +348,4 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
     </AnimatePresence>
   );
 };
+

@@ -6,15 +6,15 @@
     android:viewportWidth="512"
     android:viewportHeight="512">
 
-    <!-- বাম বাবল (ভয়েস ইনপুট - ব্লু টু পার্পল) -->
+    <!-- বাম বাবল (ভয়েস ইনপুট - নীল থেকে বেগুনি) -->
     <path
-        android:pathData="M156,135 H284 A36,36 0 0,1 320,171 V259 A36,36 0 0,1 284,295 H180 L120,355 V171 A36,36 0 0,1 156,135 Z">
+        android:pathData="M140,140 H300 A40,40 0 0,1 340,180 V280 A40,40 0 0,1 300,320 H220 L140,380 V320 H140 A40,40 0 0,1 100,280 V180 A40,40 0 0,1 140,140 Z">
         <aapt:attr name="android:fillColor">
             <gradient
-                android:startX="120"
-                android:startY="135"
-                android:endX="320"
-                android:endY="355"
+                android:startX="100"
+                android:startY="140"
+                android:endX="340"
+                android:endY="380"
                 android:type="linear">
                 <item android:offset="0.0" android:color="#FF2563EB" />
                 <item android:offset="1.0" android:color="#FF8B5CF6" />
@@ -22,20 +22,20 @@
         </aapt:attr>
     </path>
 
-    <!-- ডান বাবল ড্রপ শ্যাডো লেয়ার -->
+    <!-- ডান বাবল ফ্লোটিং শ্যাডো -->
     <path
-        android:pathData="M259,209 H358 A34,34 0 0,1 392,243 V315 A34,34 0 0,1 358,349 H340 L380,389 V349 H259 A34,34 0 0,1 225,315 V243 A34,34 0 0,1 259,209 Z"
-        android:fillColor="#3A000000" />
+        android:pathData="M244,212 H364 A40,40 0 0,1 404,252 V352 A40,40 0 0,1 364,392 H324 V452 L244,392 H244 A40,40 0 0,1 204,352 V252 A40,40 0 0,1 244,212 Z"
+        android:fillColor="#40000000" />
 
-    <!-- ডান বাবল বডি (পিঙ্ক টু অরেঞ্জ) -->
+    <!-- ডান বাবল বডি (গোলাপি থেকে কমলা) -->
     <path
-        android:pathData="M259,205 H358 A34,34 0 0,1 392,239 V311 A34,34 0 0,1 358,345 H340 L380,385 V345 H259 A34,34 0 0,1 225,311 V239 A34,34 0 0,1 259,205 Z">
+        android:pathData="M250,200 H370 A40,40 0 0,1 410,240 V340 A40,40 0 0,1 370,380 H330 V440 L250,380 H250 A40,40 0 0,1 210,340 V240 A40,40 0 0,1 250,200 Z">
         <aapt:attr name="android:fillColor">
             <gradient
-                android:startX="225"
-                android:startY="205"
-                android:endX="392"
-                android:endY="385"
+                android:startX="210"
+                android:startY="200"
+                android:endX="410"
+                android:endY="440"
                 android:type="linear">
                 <item android:offset="0.0" android:color="#FFEC4899" />
                 <item android:offset="1.0" android:color="#FFF97316" />
@@ -43,52 +43,49 @@
         </aapt:attr>
     </path>
 
-    <!-- অডিও ওয়েভ লাইনস (গ্রিন) -->
+    <!-- অডিও ওয়েভ লাইনস (সবুজ) -->
     <path
-        android:pathData="M160,195 L160,235"
-        android:strokeWidth="14"
+        android:pathData="M170,210 L170,230"
+        android:strokeWidth="12"
         android:strokeColor="#FF10B981"
         android:strokeLineCap="round" />
     <path
-        android:pathData="M188,170 L188,260"
-        android:strokeWidth="14"
+        android:pathData="M195,180 L195,260"
+        android:strokeWidth="12"
         android:strokeColor="#FF10B981"
         android:strokeLineCap="round" />
     <path
-        android:pathData="M216,150 L216,280"
-        android:strokeWidth="14"
+        android:pathData="M220,160 L220,280"
+        android:strokeWidth="12"
         android:strokeColor="#FF10B981"
         android:strokeLineCap="round" />
     <path
-        android:pathData="M244,175 L244,255"
-        android:strokeWidth="14"
-        android:strokeColor="#FF10B981"
-        android:strokeLineCap="round" />
-    <path
-        android:pathData="M272,198 L272,232"
-        android:strokeWidth="14"
+        android:pathData="M245,190 L245,250"
+        android:strokeWidth="12"
         android:strokeColor="#FF10B981"
         android:strokeLineCap="round" />
 
-    <!-- ট্রান্সলেটেড টেক্সট লাইনস (পার্পল) -->
+    <!-- ট্রান্সলেটেড টেক্সট (বেগুনি) -->
     <path
-        android:pathData="M262,288 L348,288"
-        android:strokeWidth="15"
+        android:pathData="M260,290 L350,290"
+        android:strokeWidth="14"
         android:strokeColor="#FF8B5CF6"
         android:strokeLineCap="round" />
     <path
-        android:pathData="M262,318 L310,318"
-        android:strokeWidth="15"
+        android:pathData="M260,325 L310,325"
+        android:strokeWidth="14"
         android:strokeColor="#FF8B5CF6"
         android:strokeLineCap="round" />
 
-    <!-- বড় এআই স্পার্কল (গ্রিন) -->
+    <!-- AI ম্যাজিক স্পার্কলস -->
+    <!-- বড় স্পার্কল: সবুজ -->
     <path
-        android:pathData="M340,220 Q340,238 358,238 Q340,238 340,256 Q340,238 322,238 Q340,238 340,220 Z"
+        android:pathData="M350,230 Q350,250 370,250 Q350,250 350,270 Q350,250 330,250 Q350,250 350,230 Z"
         android:fillColor="#FF10B981" />
 
-    <!-- ছোট এআই স্পার্কল (পার্পল) -->
+    <!-- ছোট স্পার্কল: বেগুনি -->
     <path
-        android:pathData="M308,215 Q308,226 319,226 Q308,226 308,237 Q308,226 297,226 Q308,226 308,215 Z"
+        android:pathData="M320,220 Q320,230 330,230 Q320,230 320,240 Q320,230 310,230 Q320,230 320,220 Z"
         android:fillColor="#FF8B5CF6" />
+
 </vector>
