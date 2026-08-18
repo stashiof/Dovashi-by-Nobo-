@@ -6,80 +6,89 @@
     android:viewportWidth="512"
     android:viewportHeight="512">
 
-    <!-- বাম বাবল (Left Bubble: #4F46E5 to #4338CA) -->
-    <path
-        android:pathData="M130,130 H300 A46,46 0 0,1 346,176 V266 A46,46 0 0,1 300,312 H210 L130,372 V312 A46,46 0 0,1 84,266 V176 A46,46 0 0,1 130,130 Z">
-        <aapt:attr name="android:fillColor">
-            <gradient
-                android:startX="130"
-                android:startY="130"
-                android:endX="346"
-                android:endY="372"
-                android:type="linear">
-                <item android:offset="0.0" android:color="#FF4F46E5" />
-                <item android:offset="1.0" android:color="#FF4338CA" />
-            </gradient>
-        </aapt:attr>
-    </path>
+    <!-- Scaled group centered inside Android Adaptive Icon 66dp / 72dp Safe Zone -->
+    <group
+        android:pivotX="256"
+        android:pivotY="270"
+        android:scaleX="0.65"
+        android:scaleY="0.65">
 
-    <!-- বাম বাবলের অডিও সাউন্ড ওয়েভ (হোয়াইট) -->
-    <path
-        android:pathData="M168,205 L168,237"
-        android:strokeWidth="14"
-        android:strokeColor="#E6FFFFFF"
-        android:strokeLineCap="round" />
-    <path
-        android:pathData="M200,180 L200,262"
-        android:strokeWidth="14"
-        android:strokeColor="#E6FFFFFF"
-        android:strokeLineCap="round" />
-    <path
-        android:pathData="M232,195 L232,247"
-        android:strokeWidth="14"
-        android:strokeColor="#E6FFFFFF"
-        android:strokeLineCap="round" />
-    <path
-        android:pathData="M264,210 L264,232"
-        android:strokeWidth="14"
-        android:strokeColor="#E6FFFFFF"
-        android:strokeLineCap="round" />
+        <!-- বাম বাবল (Left Bubble: #6366F1 to #4F46E5) -->
+        <path
+            android:pathData="M130,130 H300 A46,46 0 0,1 346,176 V266 A46,46 0 0,1 300,312 H210 L130,372 V312 A46,46 0 0,1 84,266 V176 A46,46 0 0,1 130,130 Z">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:startX="130"
+                    android:startY="130"
+                    android:endX="346"
+                    android:endY="372"
+                    android:type="linear">
+                    <item android:offset="0.0" android:color="#FF6366F1" />
+                    <item android:offset="1.0" android:color="#FF4F46E5" />
+                </gradient>
+            </aapt:attr>
+        </path>
 
-    <!-- ডান বাবল ফ্লোটিং শ্যাডো -->
-    <path
-        android:pathData="M232,224 H382 A46,46 0 0,1 428,270 V360 A46,46 0 0,1 382,406 H340 V466 L260,406 H232 A46,46 0 0,1 186,360 V270 A46,46 0 0,1 232,224 Z"
-        android:fillColor="#4D1E1B4B" />
+        <!-- বাম বাবলের অডিও সাউন্ড ওয়েভ (হোয়াইট) -->
+        <path
+            android:pathData="M168,205 L168,237"
+            android:strokeWidth="14"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeLineCap="round" />
+        <path
+            android:pathData="M200,180 L200,262"
+            android:strokeWidth="14"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeLineCap="round" />
+        <path
+            android:pathData="M232,195 L232,247"
+            android:strokeWidth="14"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeLineCap="round" />
+        <path
+            android:pathData="M264,210 L264,232"
+            android:strokeWidth="14"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeLineCap="round" />
 
-    <!-- ডান বাবল (Right Bubble: #6366F1 to #4F46E5) -->
-    <path
-        android:pathData="M232,210 H382 A46,46 0 0,1 428,256 V346 A46,46 0 0,1 382,392 H340 V452 L260,392 H232 A46,46 0 0,1 186,346 V256 A46,46 0 0,1 232,210 Z">
-        <aapt:attr name="android:fillColor">
-            <gradient
-                android:startX="232"
-                android:startY="210"
-                android:endX="428"
-                android:endY="452"
-                android:type="linear">
-                <item android:offset="0.0" android:color="#FF6366F1" />
-                <item android:offset="1.0" android:color="#FF4F46E5" />
-            </gradient>
-        </aapt:attr>
-    </path>
+        <!-- ডান বাবল ফ্লোটিং শ্যাডো -->
+        <path
+            android:pathData="M232,224 H382 A46,46 0 0,1 428,270 V360 A46,46 0 0,1 382,406 H340 V466 L260,406 H232 A46,46 0 0,1 186,360 V270 A46,46 0 0,1 232,224 Z"
+            android:fillColor="#59000000" />
 
-    <!-- ডান বাবলের টেক্সট লাইনস (হোয়াইট) -->
-    <path
-        android:pathData="M230,290 L384,290"
-        android:strokeWidth="16"
-        android:strokeColor="#F5FFFFFF"
-        android:strokeLineCap="round" />
-    <path
-        android:pathData="M230,332 L330,332"
-        android:strokeWidth="16"
-        android:strokeColor="#F5FFFFFF"
-        android:strokeLineCap="round" />
+        <!-- ডান বাবল (Right Bubble: #818CF8 to #6366F1) -->
+        <path
+            android:pathData="M232,210 H382 A46,46 0 0,1 428,256 V346 A46,46 0 0,1 382,392 H340 V452 L260,392 H232 A46,46 0 0,1 186,346 V256 A46,46 0 0,1 232,210 Z">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:startX="232"
+                    android:startY="210"
+                    android:endX="428"
+                    android:endY="452"
+                    android:type="linear">
+                    <item android:offset="0.0" android:color="#FF818CF8" />
+                    <item android:offset="1.0" android:color="#FF6366F1" />
+                </gradient>
+            </aapt:attr>
+        </path>
 
-    <!-- AI ম্যাজিক স্পার্কল স্টার (হোয়াইট) -->
-    <path
-        android:pathData="M380,236 C380,250 390,260 404,260 C390,260 380,270 380,284 C380,270 370,260 356,260 C370,260 380,250 380,236 Z"
-        android:fillColor="#FFFFFFFF" />
+        <!-- ডান বাবলের টেক্সট লাইনস (হোয়াইট) -->
+        <path
+            android:pathData="M230,290 L384,290"
+            android:strokeWidth="16"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeLineCap="round" />
+        <path
+            android:pathData="M230,332 L330,332"
+            android:strokeWidth="16"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeLineCap="round" />
+
+        <!-- AI গোল্ডেন স্পার্কল স্টার -->
+        <path
+            android:pathData="M380,236 C380,250 390,260 404,260 C390,260 380,270 380,284 C380,270 370,260 356,260 C370,260 380,250 380,236 Z"
+            android:fillColor="#FFFDE047" />
+
+    </group>
 
 </vector>

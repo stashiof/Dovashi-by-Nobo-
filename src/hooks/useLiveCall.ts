@@ -9,6 +9,55 @@ export interface LiveChatMessage {
   timestamp: number;
 }
 
+// Helper: Determine the active WebSocket backend URL (handles Web Browser vs Android APK / Capacitor)
+export function getLiveBackendHost(): string {
+  try {
+    const currentHost = window.location.host;
+    // If running in standard Web browser on Cloud Run domain (e.g. *.run.app)
+    if (
+      currentHost &&
+      !currentHost.startsWith('localhost') &&
+      !currentHost.startsWith('127.0.0.1') &&
+      !currentHost.includes('capacitor') &&
+      currentHost.includes('.')
+    ) {
+      return currentHost;
+    }
+  } catch (e) {}
+
+  // When running inside Android APK (Capacitor / Android WebView loads from localhost/file/capacitor)
+  // Connect to the Cloud Run production WebSocket backend!
+  const envHost = (import.meta as any).env?.VITE_BACKEND_HOST;
+  if (envHost && typeof envHost === 'string' && envHost.trim()) {
+    return envHost.trim().replace(/^https?:\/\//, '').replace(/\/+$/, '');
+  }
+
+  return 'ais-pre-fo3owuqjpczzsi5hj5eyh3-348785349910.asia-southeast1.run.app';
+}
+
+// Helper: Linear Resampler from any hardware rate (e.g. 48kHz / 44.1kHz on Android) down to 16kHz
+function downsampleTo16kHz(buffer: Float32Array, sampleRate: number): Float32Array {
+  if (sampleRate === 16000) return buffer;
+  const ratio = sampleRate / 16000;
+  const newLength = Math.round(buffer.length / ratio);
+  const result = new Float32Array(newLength);
+  let offsetResult = 0;
+  let offsetBuffer = 0;
+  while (offsetResult < result.length) {
+    const nextOffsetBuffer = Math.round((offsetResult + 1) * ratio);
+    let accum = 0;
+    let count = 0;
+    for (let i = offsetBuffer; i < nextOffsetBuffer && i < buffer.length; i++) {
+      accum += buffer[i];
+      count++;
+    }
+    result[offsetResult] = count > 0 ? accum / count : buffer[offsetBuffer];
+    offsetResult++;
+    offsetBuffer = nextOffsetBuffer;
+  }
+  return result;
+}
+
 // Helper: Convert Float32 [-1, 1] to 16-bit PCM Little Endian ArrayBuffer
 function floatTo16BitPCM(input: Float32Array): ArrayBuffer {
   const output = new DataView(new ArrayBuffer(input.length * 2));
@@ -30,7 +79,7 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   return window.btoa(binary);
 }
 
-// Helper: Convert base64 PCM 24kHz to AudioBuffer
+// Helper: Convert base64 PCM 24kHz to AudioBuffer (Auto-resampled by Web Audio)
 function base64PcmToAudioBuffer(base64: string, ctx: AudioContext): AudioBuffer {
   const binaryString = window.atob(base64);
   const len = binaryString.length;
@@ -67,7 +116,7 @@ export function useLiveCall(onRequireApiKey?: () => void) {
   const activeSourcesRef = useRef<AudioBufferSourceNode[]>([]);
   const isAiSpeakingRef = useRef<boolean>(false);
 
-  // VAD and Speech Window Management (Prevents Network Congestion)
+  // VAD and Speech Window Management
   const isUserSpeakingRef = useRef<boolean>(false);
   const speechTrailingFramesRef = useRef<number>(0);
   const pauseTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -169,25 +218,37 @@ export function useLiveCall(onRequireApiKey?: () => void) {
       isUserSpeakingRef.current = false;
       speechTrailingFramesRef.current = 0;
 
-      // 1. Initialize High-Precision Audio Contexts
+      // 1. Initialize High-Precision Audio Contexts with Android Fallback
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
       
-      // Input context for recording mic (16kHz standard for Gemini Live)
-      const inputAudioCtx = new AudioCtx({ sampleRate: 16000 });
+      let inputAudioCtx: AudioContext;
+      try {
+        inputAudioCtx = new AudioCtx({ sampleRate: 16000 });
+      } catch (e) {
+        // Safe hardware fallback for Android devices
+        inputAudioCtx = new AudioCtx();
+      }
+
       if (inputAudioCtx.state === 'suspended') {
         await inputAudioCtx.resume();
       }
       inputAudioCtxRef.current = inputAudioCtx;
 
-      // Output context for playback (24kHz native Gemini Live output)
-      const outputAudioCtx = new AudioCtx({ sampleRate: 24000 });
+      let outputAudioCtx: AudioContext;
+      try {
+        outputAudioCtx = new AudioCtx({ sampleRate: 24000 });
+      } catch (e) {
+        // Safe fallback for Android
+        outputAudioCtx = new AudioCtx();
+      }
+
       if (outputAudioCtx.state === 'suspended') {
         await outputAudioCtx.resume();
       }
       outputAudioCtxRef.current = outputAudioCtx;
       nextPlayTimeRef.current = outputAudioCtx.currentTime;
 
-      // 2. Request clean, continuous mic stream with full echo cancellation & noise suppression
+      // 2. Request clean mic stream with full echo cancellation & noise suppression
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           channelCount: 1,
@@ -206,10 +267,11 @@ export function useLiveCall(onRequireApiKey?: () => void) {
       const sampleEn1 = encodeURIComponent(currentPattern?.sentenceBuilding?.[0]?.en || "I want to learn English");
       const sampleBn1 = encodeURIComponent(currentPattern?.sentenceBuilding?.[0]?.bn || "আমি ইংরেজি শিখতে চাই");
 
-      // 3. Connect to App Live WebSocket Proxy
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const proxyUrl = `${protocol}//${window.location.host}/live?patternId=${pId}&structure=${struct}&meaning=${meaning}&topic=${topic}&sampleEn1=${sampleEn1}&sampleBn1=${sampleBn1}${userApiKey ? `&apiKey=${encodeURIComponent(userApiKey.trim())}` : ''}`;
+      // 3. Connect to App Live WebSocket Proxy (Works on Web & Android APK seamlessly!)
+      const backendHost = getLiveBackendHost();
+      const proxyUrl = `wss://${backendHost}/live?patternId=${pId}&structure=${struct}&meaning=${meaning}&topic=${topic}&sampleEn1=${sampleEn1}&sampleBn1=${sampleBn1}${userApiKey ? `&apiKey=${encodeURIComponent(userApiKey.trim())}` : ''}`;
 
+      console.log("Connecting Live Voice Call to:", proxyUrl);
       const ws = new WebSocket(proxyUrl);
       wsRef.current = ws;
 
@@ -268,6 +330,7 @@ export function useLiveCall(onRequireApiKey?: () => void) {
 
           if (data.error) {
             console.error("Live message error:", data.error);
+            setErrorMessage(`ত্রুটি: ${data.error}`);
             return;
           }
 
@@ -337,10 +400,11 @@ export function useLiveCall(onRequireApiKey?: () => void) {
         }
       };
 
-      // 4. Clean 4096-sample (~250ms) buffer with Smart Voice Activity Gating
-      // This sends audio ONLY when the user speaks, eliminating WebSocket buffer lag completely!
+      // 4. Single Continuous Audio Stream Capture via ScriptProcessor with Hardware Resampling
+      const actualSampleRate = inputAudioCtx.sampleRate || 16000;
+      const bufferSize = actualSampleRate >= 44100 ? 4096 : 2048;
       const source = inputAudioCtx.createMediaStreamSource(stream);
-      const processor = inputAudioCtx.createScriptProcessor(4096, 1, 1);
+      const processor = inputAudioCtx.createScriptProcessor(bufferSize, 1, 1);
       processorRef.current = processor;
 
       processor.onaudioprocess = (e) => {
@@ -370,15 +434,17 @@ export function useLiveCall(onRequireApiKey?: () => void) {
                 pauseTimerRef.current = null;
               }
 
-              // Send audio frame immediately
-              const pcm16 = floatTo16BitPCM(inputData);
+              // Downsample to 16kHz PCM for Gemini Live
+              const resampled16k = downsampleTo16kHz(inputData, actualSampleRate);
+              const pcm16 = floatTo16BitPCM(resampled16k);
               const base64Audio = arrayBufferToBase64(pcm16);
               wsRef.current.send(JSON.stringify({ audio: base64Audio }));
 
             } else if (speechTrailingFramesRef.current > 0) {
               // Send trailing frame for natural tailing of words
               speechTrailingFramesRef.current--;
-              const pcm16 = floatTo16BitPCM(inputData);
+              const resampled16k = downsampleTo16kHz(inputData, actualSampleRate);
+              const pcm16 = floatTo16BitPCM(resampled16k);
               const base64Audio = arrayBufferToBase64(pcm16);
               wsRef.current.send(JSON.stringify({ audio: base64Audio }));
 
@@ -412,7 +478,8 @@ export function useLiveCall(onRequireApiKey?: () => void) {
               isUserSpeakingRef.current = true;
               speechTrailingFramesRef.current = 2;
 
-              const pcm16 = floatTo16BitPCM(inputData);
+              const resampled16k = downsampleTo16kHz(inputData, actualSampleRate);
+              const pcm16 = floatTo16BitPCM(resampled16k);
               const base64Audio = arrayBufferToBase64(pcm16);
               wsRef.current.send(JSON.stringify({ audio: base64Audio }));
             }

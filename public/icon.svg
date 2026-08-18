@@ -1,52 +1,62 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
   <defs>
-    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#EEF2FF" />
-      <stop offset="100%" stop-color="#E0E7FF" />
+    <!-- Premium Indigo Gradient Background -->
+    <linearGradient id="appBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#312E81" />
+      <stop offset="50%" stop-color="#1E1B4B" />
+      <stop offset="100%" stop-color="#0F172A" />
     </linearGradient>
-    <linearGradient id="g1" x1="10%" y1="0%" x2="90%" y2="100%">
-      <stop offset="0%" stop-color="#4F46E5" />
-      <stop offset="100%" stop-color="#4338CA" />
-    </linearGradient>
-    <linearGradient id="g2" x1="10%" y1="0%" x2="90%" y2="100%">
+
+    <!-- Vibrant Left Bubble Gradient -->
+    <linearGradient id="bubble1" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#6366F1" />
       <stop offset="100%" stop-color="#4F46E5" />
     </linearGradient>
-    <filter id="softShadow" x="-40%" y="-40%" width="180%" height="180%">
-      <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#1E1B4B" flood-opacity="0.20" />
-    </filter>
-    <filter id="floatShadow" x="-40%" y="-40%" width="180%" height="180%">
-      <feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#1E1B4B" flood-opacity="0.30" />
+
+    <!-- Vibrant Right Bubble Gradient -->
+    <linearGradient id="bubble2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#818CF8" />
+      <stop offset="100%" stop-color="#6366F1" />
+    </linearGradient>
+
+    <!-- Soft Ambient Glow Shadow -->
+    <filter id="iconShadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000000" flood-opacity="0.45" />
     </filter>
   </defs>
 
-  <!-- App icon background canvas, rounded square (iOS/Android style) -->
-  <rect x="0" y="0" width="512" height="512" rx="112" fill="url(#bg)" />
+  <!-- Background Base Canvas -->
+  <rect width="512" height="512" rx="112" fill="url(#appBg)" />
 
-  <g filter="url(#softShadow)">
+  <!-- Centered Logo Group with Safe Padding (Scales perfectly inside Android Adaptive Safe Zone) -->
+  <g transform="translate(256, 256) scale(0.70) translate(-256, -270)" filter="url(#iconShadow)">
+    
+    <!-- Left Chat Bubble (Voice Wave Bubble) -->
     <path
       d="M130 130 H300 A46 46 0 0 1 346 176 V266 A46 46 0 0 1 300 312 H210 L130 372 V312 A46 46 0 0 1 84 266 V176 A46 46 0 0 1 130 130 Z"
-      fill="url(#g1)"
+      fill="url(#bubble1)"
     />
-  </g>
 
-  <line x1="168" y1="205" x2="168" y2="237" stroke="#FFFFFF" stroke-width="14" stroke-linecap="round" stroke-opacity="0.9" />
-  <line x1="200" y1="180" x2="200" y2="262" stroke="#FFFFFF" stroke-width="14" stroke-linecap="round" stroke-opacity="0.9" />
-  <line x1="232" y1="195" x2="232" y2="247" stroke="#FFFFFF" stroke-width="14" stroke-linecap="round" stroke-opacity="0.9" />
-  <line x1="264" y1="210" x2="264" y2="232" stroke="#FFFFFF" stroke-width="14" stroke-linecap="round" stroke-opacity="0.9" />
+    <!-- Voice Soundwave Bars (Left Bubble) -->
+    <line x1="168" y1="205" x2="168" y2="237" stroke="#FFFFFF" stroke-width="14" stroke-linecap="round" />
+    <line x1="200" y1="180" x2="200" y2="262" stroke="#FFFFFF" stroke-width="14" stroke-linecap="round" />
+    <line x1="232" y1="195" x2="232" y2="247" stroke="#FFFFFF" stroke-width="14" stroke-linecap="round" />
+    <line x1="264" y1="210" x2="264" y2="232" stroke="#FFFFFF" stroke-width="14" stroke-linecap="round" />
 
-  <g filter="url(#floatShadow)">
+    <!-- Right Chat Bubble (Conversation & AI Bubble) -->
     <path
       d="M232 210 H382 A46 46 0 0 1 428 256 V346 A46 46 0 0 1 382 392 H340 V452 L260 392 H232 A46 46 0 0 1 186 346 V256 A46 46 0 0 1 232 210 Z"
-      fill="url(#g2)"
+      fill="url(#bubble2)"
+    />
+
+    <!-- Text Lines (Right Bubble) -->
+    <line x1="230" y1="290" x2="384" y2="290" stroke="#FFFFFF" stroke-width="16" stroke-linecap="round" stroke-opacity="0.95" />
+    <line x1="230" y1="332" x2="330" y2="332" stroke="#FFFFFF" stroke-width="16" stroke-linecap="round" stroke-opacity="0.95" />
+
+    <!-- AI Magic Sparkle Star -->
+    <path
+      d="M380 236 C380 250 390 260 404 260 C390 260 380 270 380 284 C380 270 370 260 356 260 C370 260 380 250 380 236 Z"
+      fill="#FDE047"
     />
   </g>
-
-  <line x1="230" y1="290" x2="384" y2="290" stroke="#FFFFFF" stroke-width="16" stroke-linecap="round" stroke-opacity="0.96" />
-  <line x1="230" y1="332" x2="330" y2="332" stroke="#FFFFFF" stroke-width="16" stroke-linecap="round" stroke-opacity="0.96" />
-
-  <path
-    d="M380 236 C380 250 390 260 404 260 C390 260 380 270 380 284 C380 270 370 260 356 260 C370 260 380 250 380 236 Z"
-    fill="#FFFFFF"
-  />
 </svg>
