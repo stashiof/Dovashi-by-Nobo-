@@ -66,13 +66,12 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          validate-wrappers: false
 
       - name: Build Release APK with Gradle
         run: |
           cd android
-          # Ensure gradle-wrapper.jar is valid or fetch clean jar
-          mkdir -p gradle/wrapper
-          curl -sSL "https://raw.githubusercontent.com/gradle/gradle/v8.7.0/gradle/wrapper/gradle-wrapper.jar" -o gradle/wrapper/gradle-wrapper.jar
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon
 
