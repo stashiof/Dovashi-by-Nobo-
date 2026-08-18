@@ -22,6 +22,28 @@ export function useLiveCall(onRequireApiKey?: () => void) {
   const isCallActiveRef = useRef<boolean>(false);
   const subtitleTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  function downsampleBuffer(buffer: Float32Array, inputRate: number, outputRate = 16000): Float32Array {
+    if (inputRate === outputRate) return buffer;
+    const ratio = inputRate / outputRate;
+    const newLength = Math.round(buffer.length / ratio);
+    const result = new Float32Array(newLength);
+    let offsetResult = 0;
+    let offsetBuffer = 0;
+    while (offsetResult < result.length) {
+      const nextOffsetBuffer = Math.round((offsetResult + 1) * ratio);
+      let accum = 0;
+      let count = 0;
+      for (let i = offsetBuffer; i < nextOffsetBuffer && i < buffer.length; i++) {
+        accum += buffer[i];
+        count++;
+      }
+      result[offsetResult] = count > 0 ? accum / count : (buffer[offsetBuffer] || 0);
+      offsetResult++;
+      offsetBuffer = nextOffsetBuffer;
+    }
+    return result;
+  }
+
   function floatTo16BitPCM(input: Float32Array): ArrayBuffer {
     const output = new DataView(new ArrayBuffer(input.length * 2));
     for (let i = 0; i < input.length; i++) {
@@ -185,7 +207,7 @@ export function useLiveCall(onRequireApiKey?: () => void) {
         // 1. Send Setup Handshake to Gemini Live
         const setupMessage = {
           setup: {
-            model: "models/gemini-3.1-flash-live-preview",
+            model: "models/gemini-2.0-flash-exp",
             generationConfig: {
               responseModalities: ["AUDIO"],
               speechConfig: {
@@ -197,7 +219,6 @@ export function useLiveCall(onRequireApiKey?: () => void) {
               }
             },
             systemInstruction: {
-              role: "user",
               parts: [{ text: systemInstruction }]
             },
             tools: [
@@ -226,6 +247,7 @@ export function useLiveCall(onRequireApiKey?: () => void) {
         ws.send(JSON.stringify(setupMessage));
 
         // 2. Start Microphone Audio Capture
+        const actualSampleRate = inputCtx.sampleRate || 16000;
         const source = inputCtx.createMediaStreamSource(stream);
         const processor = inputCtx.createScriptProcessor(4096, 1, 1);
         processorRef.current = processor;
@@ -239,18 +261,25 @@ export function useLiveCall(onRequireApiKey?: () => void) {
             sum += Math.abs(inputData[i]);
           }
           const avg = sum / inputData.length;
-          const isSpeaking = avg > 0.015;
+          const isSpeaking = avg > 0.006;
 
           if (isSpeaking) {
-            setAudioLevel(Math.min(1, avg * 5));
+            setAudioLevel(Math.min(1, avg * 6));
             setUserSpeaking(true);
+            
+            // If user speaks while AI audio is playing, interrupt AI immediately (Barge-in)
+            if (activeSourcesRef.current.length > 0) {
+              clearAudioQueue();
+            }
             setTutorState('listening');
           } else {
             setUserSpeaking(false);
           }
 
           if (ws.readyState === WebSocket.OPEN) {
-            const pcmBuffer = floatTo16BitPCM(inputData);
+            // Downsample cleanly to 16kHz so speech is crystal-clear regardless of device hardware
+            const resampled16k = downsampleBuffer(inputData, actualSampleRate, 16000);
+            const pcmBuffer = floatTo16BitPCM(resampled16k);
             const base64Audio = base64FromArrayBuffer(pcmBuffer);
             
             // Standard Gemini Live realtimeInput format
@@ -277,10 +306,10 @@ export function useLiveCall(onRequireApiKey?: () => void) {
         try {
           const msg = JSON.parse(event.data);
 
-          // A. Setup Complete -> Send Initial Bengali Greeting Trigger
+          // A. Setup Complete -> Send Initial Dynamic Bengali Greeting Trigger
           if (msg.setupComplete) {
             setTutorState('speaking');
-            setCurrentSubtitle("Air কথা বলা শুরু করছে...");
+            setCurrentSubtitle("Air সংযোগ হয়েছে...");
 
             const greetingTrigger = {
               clientContent: {
@@ -289,7 +318,8 @@ export function useLiveCall(onRequireApiKey?: () => void) {
                     role: "user",
                     parts: [
                       {
-                        text: `[SYSTEM TRIGGER: The call has just connected. Speak in natural energetic BENGALI with lively storytelling tone.] স্বাগতম জানিয়ে সহজ বাংলায় বুঝিয়ে বলো: "স্বাগতম লেভেল ${pId}-এ! আজকে আমাদের প্যাটার্ন হলো: ${struct} — মানে '${meaning}'। যেমন: '${sampleBn}' = '${sampleEn}'। এবার ধরো তুমি বন্ধুদের সাথে আড্ডায় বসেছ, আর বলতে চাও 'আমি চা খেতে চাই'—এর ইংরেজি কী হবে বলো তো?"`
+                        text: `[SYSTEM TRIGGER: Call connected with student for Level ${pId} (${struct} - '${meaning}')]. 
+বন্ধু হিসেবে একবারে প্রাণবন্ত, মিষ্টি ও নতুন স্টাইলে স্বাগতম জানাও (যেমন: "হাই বন্ধু! কেমন আছো বলো?", "হ্যালো বন্ধু! কী অবস্থা তোমার?", "আরে বন্ধু, চলে আসছ! দারুণ হলো!"). তারপর স্বাভাবিক আড্ডার ছলে আজকের প্যাটার্ন '${meaning}' নিয়ে খুব হালকা ও মজার একটি সিচুয়েশন বানিয়ে কথা শুরু করো। কোনো মুখস্থ বা রোবোটিক নিয়ম বলবে না!`
                       }
                     ]
                   }
@@ -406,6 +436,8 @@ export function useLiveCall(onRequireApiKey?: () => void) {
           if (e.code === 1008) {
             setErrorMessage("Gemini API Key সঠিক নয় বা পারমিশন নেই। অনুগ্রহ করে গুগল এআই স্টুডিও থেকে নতুন কি নিন।");
             if (onRequireApiKey) onRequireApiKey();
+          } else if (e.code !== 1000) {
+            setErrorMessage(`সার্ভার সংযোগ বিচ্ছিন্ন করেছে। (কোড: ${e.code}, কারণ: ${e.reason || 'অজানা'})`);
           }
           stopCall();
         }
