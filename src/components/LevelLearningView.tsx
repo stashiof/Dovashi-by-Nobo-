@@ -28,6 +28,7 @@ interface LevelLearningViewProps {
   userSpeaking: boolean;
   connectionStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
   errorMessage: string;
+  messages?: Array<{ id: string; sender: 'user' | 'tutor'; text: string; timestamp: number }>;
   onStartCall: (pattern: Pattern) => void;
   onStopCall: () => void;
   onSendManualMessage?: (text: string) => void;
@@ -51,9 +52,10 @@ export const LevelLearningView: React.FC<LevelLearningViewProps> = ({
   userSpeaking,
   connectionStatus,
   errorMessage,
+  messages = [],
   onStartCall,
   onStopCall,
-  onSendManualMessage
+  onSendManualMessage,
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('formula');
   const [speakingTextInput, setSpeakingTextInput] = useState('');
@@ -939,6 +941,44 @@ export const LevelLearningView: React.FC<LevelLearningViewProps> = ({
                   </button>
                 ) : (
                   <div className="w-full space-y-4">
+                    {/* Live Status indicator */}
+                    <div className="flex items-center justify-center gap-2 py-2 px-4 bg-slate-900/80 border border-slate-800 rounded-2xl max-w-sm mx-auto">
+                      <span className="relative flex h-3 w-3">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+                      </span>
+                      <span className="text-xs font-bold text-emerald-400">
+                        {userSpeaking ? '🎙️ আপনি কথা বলছেন...' : tutorState === 'speaking' ? '🔊 Air লাইভ কথা বলছে...' : '⚡ Gemini Live সক্রিয় — কথা বলুন...'}
+                      </span>
+                    </div>
+
+                    {/* Live Dialogue Stream Log */}
+                    {messages.length > 0 && (
+                      <div className="w-full max-h-48 overflow-y-auto space-y-2.5 p-3 rounded-xl bg-slate-900/90 border border-slate-800 text-left text-xs">
+                        {messages.map((m) => (
+                          <div
+                            key={m.id}
+                            className={`flex gap-2 ${
+                              m.sender === 'user' ? 'justify-end' : 'justify-start'
+                            }`}
+                          >
+                            <div
+                              className={`max-w-[85%] rounded-xl px-3 py-2 ${
+                                m.sender === 'user'
+                                  ? 'bg-emerald-600/30 border border-emerald-500/40 text-emerald-100 rounded-br-none'
+                                  : 'bg-slate-800/90 border border-slate-700 text-slate-200 rounded-bl-none'
+                              }`}
+                            >
+                              <div className="text-[10px] font-bold text-slate-400 mb-0.5">
+                                {m.sender === 'user' ? '👤 আপনি' : '🎙️ Air'}
+                              </div>
+                              <p className="leading-relaxed">{m.text}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
                     {/* Live Message Input bar */}
                     <form
                       onSubmit={(e) => {

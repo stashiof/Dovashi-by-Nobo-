@@ -255,29 +255,24 @@ async function startServer() {
 CURRENT PATTERN PRACTICE SESSION DETAILS:
 - Level / Pattern ID: Level ${patternId}
 - Structure (ফর্মুলা): ${patternStructure}
-- Bengali Meaning (প্যাটার্নের অর্থ): ${patternMeaning}
+- Bengali Meaning (অর্থ): ${patternMeaning}
 - Topic: ${topic}
-- Core Grammar Rule to Enforce: ${grammarNote || "Right forms of verb & accurate auxiliary structure"}
-- Example Target Sentence: "${sampleEn1}" (${sampleBn1})
-- Suggested Vocabulary: ${powerWord ? powerWord : "relevant daily words"}
+- Core Rule: ${grammarNote || "Right forms of verb & accurate structure"}
+- Example: "${sampleEn1}" (${sampleBn1})
 
-AIR-এর বাস্তবমুখী কথপোকথন ও আড্ডার নিয়মাবলী (Hyper-Realistic Conversational Directives):
-1. **শুরুতে পরিচয় ও স্পষ্ট বাংলায় বুঝিয়ে দেওয়া:**
-   - প্রাণবন্ত গলায় বলুন: "স্বাগতম লেভেল ${patternId}-এ! আজকে আমাদের প্যাটার্ন হলো: **${patternStructure}**—মানে '${patternMeaning}'। যেমন: '${sampleBn1}' এর ইংরেজি হলো '${sampleEn1}'।"
-   - এরপরই একটি বাস্তব জীবনের পরিস্থিতির ছোট গল্প বানিয়ে টেস্ট করুন: "যেমন ধরুন আপনি বন্ধুদের সাথে আড্ডায় বসেছেন, আর বলতে চান—'আমি এক কাপ চা খেতে চাই', তাহলে ইংরেজিতে কীভাবে বলবেন?"
-2. **বাস্তব জীবনের ছোট ছোট গল্প ও সিচুয়েশন তৈরি (Storytelling & Scenarios):**
-   - রোবটের মতো একটানা শুধু প্রশ্ন করবেন না! কথার ফাঁকে ফাঁকে মজার ছোট ছোট গল্প বা সিচুয়েশন বানিয়ে বলবেন (যেমন: বাসে ট্রাভেল, চায়ের দোকানে আড্ডা, ইন্টারভিউ, বন্ধুদের খোঁচা দেওয়া, বাজারে মাছ কেনা, রেস্তোরাঁয় খাবার অর্ডার)।
-   - শিক্ষার্থীর প্রতিটি উত্তরের সাথে এক লাইনের স্বাভাবিক মানবিক প্রতিক্রিয়া দেখাবেন।
-3. **ভুল করলে সাথে সাথে স্পটে জ্ঞান দেওয়া ও কড়া শাসন:**
-   - যদি ভুল করে (যেমন 'to' বাদ দিয়েছে, verb-এর ভুল ফর্ম বলেছে): সাথে সাথে মজা করে ভুলটা ধরে শুদ্ধ করে বুঝিয়ে দিন এবং তাকে দিয়ে শুদ্ধ বাক্যটা বলিয়ে নিন।
-   - বারবার একই ভুল করলে কড়া ধমক বা শাসন দিন ("আরে বলদ নাকি? একটু আগেই না বুঝালাম! কান খোলো, চোখ খোলো! আবার ঠিক করে বলো!")।
-4. **কখনই ৩-৪ প্রশ্নের পর 'পরের লেভেলে যাই' বলে থামবেন না (Endless Fluid Practice):**
-   - শিক্ষার্থী যতক্ষণ খুশি কথা বলবে। আপনি নানা রকম মজার বাস্তব পরিস্থিতি তৈরি করে প্র্যাকটিস চালিয়ে যেতে থাকবেন।
-5. **কল কেটে দেওয়া (Hang Up):**
-   - যখন শিক্ষার্থী মুখে বলবে "আজকের মতো থাক", "কল কেটে দাও", "রাখছি", "bye Air", "পরে কথা বলব" — তখন আপনি সাথে সাথে 'hangUpCall' টুল কল করবেন এবং মিষ্টি বিদায় জানিয়ে ফোন কেটে দেবেন!`;
+CRITICAL SPEED & BEHAVIOR RULES (Zero Latency Directives):
+1. **NO INTERNAL MONOLOGUES:** Do NOT generate any thought process, meta-analysis, or reasoning headers like "**Choosing a response**" or "**Thinking**". Start speaking your real reply IMMEDIATELY.
+2. **SUPER FAST & CONCISE (১-২ লাইনে উত্তর):** Keep every response strictly to 1-2 punchy, enthusiastic, spoken sentences in natural Bengali/English. Never give long lectures.
+3. **ACCURATE INTERACTION:** 
+   - If student builds sentence correctly: say "সাবাশ!" or "Superb!" and immediately give next real-life fun situation.
+   - If student makes a mistake: gently correct them and have them repeat.
+   - If student asks something: answer directly in 1 friendly sentence.
+4. **HANG UP:** When the user explicitly says "রাখছি", "bye Air", "আজকের মতো থাক", call 'hangUpCall' immediately.`;
+
+      const LIVE_MODEL = "gemini-3.1-flash-live-preview";
 
       const sessionPromise = clientAi.live.connect({
-        model: "gemini-3.1-flash-live-preview",
+        model: LIVE_MODEL,
         config: {
           responseModalities: [Modality.AUDIO],
           speechConfig: {
@@ -346,7 +341,12 @@ AIR-এর বাস্তবমুখী কথপোকথন ও আড্ড
                     clientWs.send(JSON.stringify({ audio: part.inlineData.data }));
                   }
                   if (part.text) {
-                    clientWs.send(JSON.stringify({ text: part.text }));
+                    const text = part.text.trim();
+                    // Filter out internal thinking / reasoning headers
+                    const isThought = text.startsWith("**") || text.startsWith("Thinking") || text.includes("Choosing a Response") || text.includes("I've decided on") || text.startsWith("*");
+                    if (!isThought && text.length > 0) {
+                      clientWs.send(JSON.stringify({ text: text }));
+                    }
                   }
                 }
               }
@@ -370,7 +370,7 @@ AIR-এর বাস্তবমুখী কথপোকথন ও আড্ড
             }
           },
           onerror: (err: any) => {
-            console.error("Gemini Live session error:", err); console.log("LIVE API ERROR DETAILS:", JSON.stringify(err, null, 2));
+            console.error("Gemini Live session error:", err);
             try {
               clientWs.send(JSON.stringify({ error: err.message || "Live session error" }));
             } catch (e) {}
@@ -385,7 +385,7 @@ AIR-এর বাস্তবমুখী কথপোকথন ও আড্ড
       sessionPromise.then(session => {
         try {
           session.sendClientContent({
-            turns: [{role: 'user', parts: [{text: `[SYSTEM TRIGGER: The call has just connected. Speak in natural energetic BENGALI with lively storytelling tone.] স্বাগতম জানিয়ে সহজ বাংলায় বুঝিয়ে বলো: "স্বাগতম লেভেল ${patternId}-এ! আজকে আমাদের প্যাটার্ন হলো: ${patternStructure} — মানে '${patternMeaning}'। যেমন: ${sampleBn1 || 'আমি এটা করতে চাই'} = ${sampleEn1 || 'I want to do this'}। এবার ধরো তুমি বন্ধুদের সাথে আড্ডায় বসেছ, আর বলতে চাও 'আমি চা খেতে চাই'—এর ইংরেজি কী হবে বলো তো?"`}]}],
+            turns: [{role: 'user', parts: [{text: `[SYSTEM TRIGGER: The call has just connected. Speak in natural energetic BENGALI immediately without meta-thinking.] স্বাগতম জানিয়ে এক লাইনে বলো: "স্বাগতম লেভেল ${patternId}-এ! আজকে আমাদের প্যাটার্ন: ${patternStructure} — মানে '${patternMeaning}'। যেমন: ${sampleBn1 || 'আমি এটা করতে চাই'} = ${sampleEn1 || 'I want to do this'}। এবার বলো তো: 'আমি এক কাপ কফি খেতে চাই'—এর ইংরেজি কী হবে?"`}]}],
             turnComplete: true
           });
         } catch(e) {
@@ -405,7 +405,12 @@ AIR-এর বাস্তবমুখী কথপোকথন ও আড্ড
 
           if (parsed.audio) {
             session.sendRealtimeInput({
-              audio: { data: parsed.audio, mimeType: "audio/pcm;rate=16000" },
+              audio: { mimeType: "audio/pcm;rate=16000", data: parsed.audio },
+            });
+          } else if (parsed.endOfSpeech) {
+            // Signal to Gemini Live that the user has stopped speaking so it can respond immediately
+            session.sendRealtimeInput({
+              audioStreamEnd: true
             });
           } else if (parsed.text) {
             session.sendClientContent({

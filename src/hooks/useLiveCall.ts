@@ -1,7 +1,51 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Pattern } from '../types';
 import { getUserApiKey } from '../utils/storage';
-import { buildPatternLiveInstruction } from '../utils/aiPrompts';
+
+export interface LiveChatMessage {
+  id: string;
+  sender: 'user' | 'tutor';
+  text: string;
+  timestamp: number;
+}
+
+// Helper: Convert Float32 [-1, 1] to 16-bit PCM Little Endian ArrayBuffer
+function floatTo16BitPCM(input: Float32Array): ArrayBuffer {
+  const output = new DataView(new ArrayBuffer(input.length * 2));
+  for (let i = 0; i < input.length; i++) {
+    const s = Math.max(-1, Math.min(1, input[i]));
+    output.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+  }
+  return output.buffer;
+}
+
+// Helper: ArrayBuffer to Base64
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return window.btoa(binary);
+}
+
+// Helper: Convert base64 PCM 24kHz to AudioBuffer
+function base64PcmToAudioBuffer(base64: string, ctx: AudioContext): AudioBuffer {
+  const binaryString = window.atob(base64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  const int16Array = new Int16Array(bytes.buffer);
+  const audioBuffer = ctx.createBuffer(1, int16Array.length, 24000);
+  const channelData = audioBuffer.getChannelData(0);
+  for (let i = 0; i < int16Array.length; i++) {
+    channelData[i] = int16Array[i] / 32768.0;
+  }
+  return audioBuffer;
+}
 
 export function useLiveCall(onRequireApiKey?: () => void) {
   const [callActive, setCallActive] = useState(false);
@@ -11,78 +55,24 @@ export function useLiveCall(onRequireApiKey?: () => void) {
   const [userSpeaking, setUserSpeaking] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected' | 'error'>('disconnected');
   const [errorMessage, setErrorMessage] = useState('');
+  const [messages, setMessages] = useState<LiveChatMessage[]>([]);
 
   const wsRef = useRef<WebSocket | null>(null);
   const inputAudioCtxRef = useRef<AudioContext | null>(null);
   const outputAudioCtxRef = useRef<AudioContext | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
+  const isCallActiveRef = useRef<boolean>(false);
   const nextPlayTimeRef = useRef<number>(0);
   const activeSourcesRef = useRef<AudioBufferSourceNode[]>([]);
-  const isCallActiveRef = useRef<boolean>(false);
-  const subtitleTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isAiSpeakingRef = useRef<boolean>(false);
 
-  function downsampleBuffer(buffer: Float32Array, inputRate: number, outputRate = 16000): Float32Array {
-    if (inputRate === outputRate) return buffer;
-    const ratio = inputRate / outputRate;
-    const newLength = Math.round(buffer.length / ratio);
-    const result = new Float32Array(newLength);
-    let offsetResult = 0;
-    let offsetBuffer = 0;
-    while (offsetResult < result.length) {
-      const nextOffsetBuffer = Math.round((offsetResult + 1) * ratio);
-      let accum = 0;
-      let count = 0;
-      for (let i = offsetBuffer; i < nextOffsetBuffer && i < buffer.length; i++) {
-        accum += buffer[i];
-        count++;
-      }
-      result[offsetResult] = count > 0 ? accum / count : (buffer[offsetBuffer] || 0);
-      offsetResult++;
-      offsetBuffer = nextOffsetBuffer;
-    }
-    return result;
-  }
+  // VAD and Speech Window Management (Prevents Network Congestion)
+  const isUserSpeakingRef = useRef<boolean>(false);
+  const speechTrailingFramesRef = useRef<number>(0);
+  const pauseTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  function floatTo16BitPCM(input: Float32Array): ArrayBuffer {
-    const output = new DataView(new ArrayBuffer(input.length * 2));
-    for (let i = 0; i < input.length; i++) {
-      const s = Math.max(-1, Math.min(1, input[i]));
-      output.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
-    }
-    return output.buffer;
-  }
-
-  function base64FromArrayBuffer(arrayBuffer: ArrayBuffer): string {
-    let binary = '';
-    const bytes = new Uint8Array(arrayBuffer);
-    const len = bytes.byteLength;
-    for (let i = 0; i < len; i++) {
-      binary += String.fromCharCode(bytes[i]);
-    }
-    return window.btoa(binary);
-  }
-
-  function base64ToAudioBuffer(
-    base64: string,
-    ctx: AudioContext,
-    sampleRate = 24000
-  ): AudioBuffer {
-    const binaryString = window.atob(base64);
-    const len = binaryString.length;
-    const bytes = new Uint8Array(len);
-    for (let i = 0; i < len; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
-    }
-    const int16Array = new Int16Array(bytes.buffer);
-    const audioBuffer = ctx.createBuffer(1, int16Array.length, sampleRate);
-    const channelData = audioBuffer.getChannelData(0);
-    for (let i = 0; i < int16Array.length; i++) {
-      channelData[i] = int16Array[i] / 32768.0;
-    }
-    return audioBuffer;
-  }
-
+  // Stop pending audio and clear queue
   const clearAudioQueue = useCallback(() => {
     activeSourcesRef.current.forEach(source => {
       try {
@@ -91,6 +81,7 @@ export function useLiveCall(onRequireApiKey?: () => void) {
       } catch (e) {}
     });
     activeSourcesRef.current = [];
+    isAiSpeakingRef.current = false;
     if (outputAudioCtxRef.current) {
       nextPlayTimeRef.current = outputAudioCtxRef.current.currentTime;
     }
@@ -100,9 +91,14 @@ export function useLiveCall(onRequireApiKey?: () => void) {
     isCallActiveRef.current = false;
     clearAudioQueue();
 
+    if (pauseTimerRef.current) {
+      clearTimeout(pauseTimerRef.current);
+      pauseTimerRef.current = null;
+    }
+
     if (wsRef.current) {
       try {
-        wsRef.current.close(1000, "User disconnected");
+        wsRef.current.close(1000, "User hung up");
       } catch (e) {}
       wsRef.current = null;
     }
@@ -116,7 +112,7 @@ export function useLiveCall(onRequireApiKey?: () => void) {
 
     if (mediaStreamRef.current) {
       try {
-        mediaStreamRef.current.getTracks().forEach(track => track.stop());
+        mediaStreamRef.current.getTracks().forEach(t => t.stop());
       } catch (e) {}
       mediaStreamRef.current = null;
     }
@@ -135,11 +131,6 @@ export function useLiveCall(onRequireApiKey?: () => void) {
       outputAudioCtxRef.current = null;
     }
 
-    if (subtitleTimeoutRef.current) {
-      clearTimeout(subtitleTimeoutRef.current);
-      subtitleTimeoutRef.current = null;
-    }
-
     setCallActive(false);
     setConnectionStatus('disconnected');
     setTutorState('idle');
@@ -148,34 +139,58 @@ export function useLiveCall(onRequireApiKey?: () => void) {
     setCurrentSubtitle('');
   }, [clearAudioQueue]);
 
-  const startCall = useCallback(async (currentPattern?: Pattern) => {
-    const userApiKey = getUserApiKey();
-    if (!userApiKey) {
-      if (onRequireApiKey) onRequireApiKey();
-      setErrorMessage("AI কোচের সাথে কথা বলতে অনুগ্রহ করে আপনার Gemini API Key যুক্ত করুন।");
-      return;
-    }
+  // Send typed or manual text message to Gemini Live
+  const sendManualMessage = useCallback((text: string) => {
+    if (!text.trim() || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    
+    clearAudioQueue();
+    const cleanText = text.trim();
+    setCurrentSubtitle(`আপনি: "${cleanText}"`);
+    setTutorState('thinking');
+    setUserSpeaking(false);
 
+    setMessages(prev => [
+      ...prev,
+      { id: Date.now().toString(), sender: 'user', text: cleanText, timestamp: Date.now() }
+    ]);
+
+    wsRef.current.send(JSON.stringify({
+      text: cleanText
+    }));
+  }, [clearAudioQueue]);
+
+  const startCall = useCallback(async (currentPattern?: Pattern) => {
     try {
       setConnectionStatus('connecting');
       setErrorMessage('');
+      setMessages([]);
       isCallActiveRef.current = true;
+      isAiSpeakingRef.current = false;
+      isUserSpeakingRef.current = false;
+      speechTrailingFramesRef.current = 0;
 
+      // 1. Initialize High-Precision Audio Contexts
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      const inputCtx = new AudioCtx({ sampleRate: 16000 });
-      const outputCtx = new AudioCtx({ sampleRate: 24000 });
       
-      await inputCtx.resume();
-      await outputCtx.resume();
+      // Input context for recording mic (16kHz standard for Gemini Live)
+      const inputAudioCtx = new AudioCtx({ sampleRate: 16000 });
+      if (inputAudioCtx.state === 'suspended') {
+        await inputAudioCtx.resume();
+      }
+      inputAudioCtxRef.current = inputAudioCtx;
 
-      inputAudioCtxRef.current = inputCtx;
-      outputAudioCtxRef.current = outputCtx;
-      nextPlayTimeRef.current = outputCtx.currentTime;
+      // Output context for playback (24kHz native Gemini Live output)
+      const outputAudioCtx = new AudioCtx({ sampleRate: 24000 });
+      if (outputAudioCtx.state === 'suspended') {
+        await outputAudioCtx.resume();
+      }
+      outputAudioCtxRef.current = outputAudioCtx;
+      nextPlayTimeRef.current = outputAudioCtx.currentTime;
 
+      // 2. Request clean, continuous mic stream with full echo cancellation & noise suppression
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           channelCount: 1,
-          sampleRate: 16000,
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
@@ -183,265 +198,230 @@ export function useLiveCall(onRequireApiKey?: () => void) {
       });
       mediaStreamRef.current = stream;
 
+      const userApiKey = getUserApiKey();
       const pId = currentPattern?.id || 1;
-      const struct = currentPattern?.structure || "Subject + want(s) + to + Verb";
-      const meaning = currentPattern?.bengaliMeaning || "কেউ কোনো কিছু করতে চায়";
-      const sampleEn = currentPattern?.sentenceBuilding?.[0]?.en || "I want to learn English";
-      const sampleBn = currentPattern?.sentenceBuilding?.[0]?.bn || "আমি ইংরেজি শিখতে চাই";
+      const struct = encodeURIComponent(currentPattern?.structure || "Subject + want(s) + to + Verb");
+      const meaning = encodeURIComponent(currentPattern?.bengaliMeaning || "কেউ কোনো কিছু করতে চায়");
+      const topic = encodeURIComponent(currentPattern?.speakingTask?.topic || currentPattern?.categoryTag || "Daily Life");
+      const sampleEn1 = encodeURIComponent(currentPattern?.sentenceBuilding?.[0]?.en || "I want to learn English");
+      const sampleBn1 = encodeURIComponent(currentPattern?.sentenceBuilding?.[0]?.bn || "আমি ইংরেজি শিখতে চাই");
 
-      const systemInstruction = buildPatternLiveInstruction(currentPattern);
+      // 3. Connect to App Live WebSocket Proxy
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const proxyUrl = `${protocol}//${window.location.host}/live?patternId=${pId}&structure=${struct}&meaning=${meaning}&topic=${topic}&sampleEn1=${sampleEn1}&sampleBn1=${sampleBn1}${userApiKey ? `&apiKey=${encodeURIComponent(userApiKey.trim())}` : ''}`;
 
-      // Connect directly to Google's official Gemini Live Multimodal WebSocket Endpoint
-      // This works 100% on both Web and Android APK without requiring a Node server on the phone!
-      const wsUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key=${encodeURIComponent(userApiKey.trim())}`;
-      const ws = new WebSocket(wsUrl);
+      const ws = new WebSocket(proxyUrl);
       wsRef.current = ws;
+
+      const playAudioChunk = (base64Data: string) => {
+        if (!isCallActiveRef.current || !outputAudioCtxRef.current) return;
+        const ctx = outputAudioCtxRef.current;
+        if (ctx.state === 'suspended') ctx.resume();
+
+        const audioBuf = base64PcmToAudioBuffer(base64Data, ctx);
+        const sourceNode = ctx.createBufferSource();
+        sourceNode.buffer = audioBuf;
+        sourceNode.connect(ctx.destination);
+
+        const now = ctx.currentTime;
+        if (nextPlayTimeRef.current < now) {
+          nextPlayTimeRef.current = now + 0.015;
+        }
+
+        sourceNode.start(nextPlayTimeRef.current);
+        nextPlayTimeRef.current += audioBuf.duration;
+
+        activeSourcesRef.current.push(sourceNode);
+        isAiSpeakingRef.current = true;
+        setTutorState('speaking');
+        setAudioLevel(0.4 + Math.random() * 0.45);
+
+        sourceNode.onended = () => {
+          activeSourcesRef.current = activeSourcesRef.current.filter(s => s !== sourceNode);
+          if (activeSourcesRef.current.length === 0 && isCallActiveRef.current) {
+            isAiSpeakingRef.current = false;
+            setTutorState('listening');
+            setAudioLevel(0);
+          }
+        };
+      };
 
       ws.onopen = () => {
         if (!isCallActiveRef.current) return;
         setConnectionStatus('connected');
         setCallActive(true);
-        setTutorState('thinking');
-        setCurrentSubtitle("সংযোগ হয়েছে! Air রেডি হচ্ছে...");
-
-        // 1. Send Setup Handshake to Gemini Live
-        const setupMessage = {
-          setup: {
-            model: "models/gemini-2.0-flash-exp",
-            generationConfig: {
-              responseModalities: ["AUDIO"],
-              speechConfig: {
-                voiceConfig: {
-                  prebuiltVoiceConfig: {
-                    voiceName: "Puck"
-                  }
-                }
-              }
-            },
-            systemInstruction: {
-              parts: [{ text: systemInstruction }]
-            },
-            tools: [
-              {
-                functionDeclarations: [
-                  {
-                    name: "hangUpCall",
-                    description: "Hang up / disconnect the live audio call immediately when the user explicitly requests to stop practicing, hang up, or says goodbye (e.g. 'কল কেটে দাও', 'আচ্ছা রাখছি', 'আজকের মতো থাক', 'bye Air', 'পরে কথা বলব', 'hang up').",
-                    parameters: {
-                      type: "OBJECT",
-                      properties: {
-                        farewellReason: {
-                          type: "STRING",
-                          description: "A short, friendly, witty goodbye phrase in Bengali before hanging up."
-                        }
-                      },
-                      required: ["farewellReason"]
-                    }
-                  }
-                ]
-              }
-            ]
-          }
-        };
-
-        ws.send(JSON.stringify(setupMessage));
-
-        // 2. Start Microphone Audio Capture
-        const actualSampleRate = inputCtx.sampleRate || 16000;
-        const source = inputCtx.createMediaStreamSource(stream);
-        const processor = inputCtx.createScriptProcessor(4096, 1, 1);
-        processorRef.current = processor;
-
-        processor.onaudioprocess = (e) => {
-          if (!isCallActiveRef.current) return;
-          const inputData = e.inputBuffer.getChannelData(0);
-
-          let sum = 0;
-          for (let i = 0; i < inputData.length; i++) {
-            sum += Math.abs(inputData[i]);
-          }
-          const avg = sum / inputData.length;
-          const isSpeaking = avg > 0.006;
-
-          if (isSpeaking) {
-            setAudioLevel(Math.min(1, avg * 6));
-            setUserSpeaking(true);
-            
-            // If user speaks while AI audio is playing, interrupt AI immediately (Barge-in)
-            if (activeSourcesRef.current.length > 0) {
-              clearAudioQueue();
-            }
-            setTutorState('listening');
-          } else {
-            setUserSpeaking(false);
-          }
-
-          if (ws.readyState === WebSocket.OPEN) {
-            // Downsample cleanly to 16kHz so speech is crystal-clear regardless of device hardware
-            const resampled16k = downsampleBuffer(inputData, actualSampleRate, 16000);
-            const pcmBuffer = floatTo16BitPCM(resampled16k);
-            const base64Audio = base64FromArrayBuffer(pcmBuffer);
-            
-            // Standard Gemini Live realtimeInput format
-            const audioPayload = {
-              realtimeInput: {
-                mediaChunks: [
-                  {
-                    mimeType: "audio/pcm;rate=16000",
-                    data: base64Audio
-                  }
-                ]
-              }
-            };
-            ws.send(JSON.stringify(audioPayload));
-          }
-        };
-
-        source.connect(processor);
-        processor.connect(inputCtx.destination);
+        setTutorState('speaking');
+        setCurrentSubtitle("Air লাইভ যুক্ত হয়েছে! শুনুন...");
       };
 
       ws.onmessage = (event) => {
         if (!isCallActiveRef.current) return;
         try {
-          const msg = JSON.parse(event.data);
+          const data = JSON.parse(event.data);
 
-          // A. Setup Complete -> Send Initial Dynamic Bengali Greeting Trigger
-          if (msg.setupComplete) {
-            setTutorState('speaking');
-            setCurrentSubtitle("Air সংযোগ হয়েছে...");
-
-            const greetingTrigger = {
-              clientContent: {
-                turns: [
-                  {
-                    role: "user",
-                    parts: [
-                      {
-                        text: `[SYSTEM TRIGGER: Call connected with student for Level ${pId} (${struct} - '${meaning}')]. 
-বন্ধু হিসেবে একবারে প্রাণবন্ত, মিষ্টি ও নতুন স্টাইলে স্বাগতম জানাও (যেমন: "হাই বন্ধু! কেমন আছো বলো?", "হ্যালো বন্ধু! কী অবস্থা তোমার?", "আরে বন্ধু, চলে আসছ! দারুণ হলো!"). তারপর স্বাভাবিক আড্ডার ছলে আজকের প্যাটার্ন '${meaning}' নিয়ে খুব হালকা ও মজার একটি সিচুয়েশন বানিয়ে কথা শুরু করো। কোনো মুখস্থ বা রোবোটিক নিয়ম বলবে না!`
-                      }
-                    ]
-                  }
-                ],
-                turnComplete: true
-              }
-            };
-            ws.send(JSON.stringify(greetingTrigger));
+          if (data.requireApiKey) {
+            if (onRequireApiKey) onRequireApiKey();
+            setErrorMessage(data.error || "Gemini API Key প্রয়োজন।");
+            stopCall();
             return;
           }
 
-          // B. Tool Call (Hang Up function)
-          if (msg.toolCall?.functionCalls) {
-            for (const call of msg.toolCall.functionCalls) {
-              if (call.name === "hangUpCall") {
-                const farewell = (call.args as any)?.farewellReason || "আচ্ছা, ঠিক আছে! আজকের মতো রাখছি। খুব ভালো প্র্যাকটিস হলো!";
-                setCurrentSubtitle(farewell);
-                setTutorState('speaking');
-
-                // Send tool response
-                if (ws.readyState === WebSocket.OPEN) {
-                  ws.send(JSON.stringify({
-                    toolResponse: {
-                      functionResponses: [
-                        {
-                          id: call.id,
-                          name: call.name,
-                          response: { output: "Call disconnected." }
-                        }
-                      ]
-                    }
-                  }));
-                }
-
-                setTimeout(() => {
-                  stopCall();
-                }, 2500);
-              }
-            }
+          if (data.error) {
+            console.error("Live message error:", data.error);
+            return;
           }
 
-          // C. Interruption Notification
-          if (msg.serverContent?.interrupted) {
+          if (data.interrupted) {
             clearAudioQueue();
             setTutorState('listening');
             return;
           }
 
-          // D. Live Audio Output & Subtitle
-          const parts = msg.serverContent?.modelTurn?.parts;
-          if (parts && parts.length > 0) {
-            for (const part of parts) {
-              if (part.text) {
-                setCurrentSubtitle(part.text);
-                setTutorState('speaking');
-                if (subtitleTimeoutRef.current) clearTimeout(subtitleTimeoutRef.current);
-                subtitleTimeoutRef.current = setTimeout(() => {
-                  if (isCallActiveRef.current) {
-                    setTutorState('listening');
-                  }
-                }, 5000);
-              }
+          if (data.hangUp) {
+            if (data.text) {
+              setCurrentSubtitle(data.text);
+              setMessages(prev => [
+                ...prev,
+                { id: Date.now().toString(), sender: 'tutor', text: data.text, timestamp: Date.now() }
+              ]);
+            }
+            setTimeout(() => {
+              stopCall();
+            }, 2200);
+            return;
+          }
 
-              if (part.inlineData?.data && outputAudioCtxRef.current) {
-                const outCtx = outputAudioCtxRef.current;
-                const audioBuf = base64ToAudioBuffer(part.inlineData.data, outCtx, 24000);
-                
-                const source = outCtx.createBufferSource();
-                source.buffer = audioBuf;
-                source.connect(outCtx.destination);
-
-                const now = outCtx.currentTime;
-                if (nextPlayTimeRef.current < now) {
-                  nextPlayTimeRef.current = now;
+          if (data.text) {
+            const txt = data.text.trim();
+            // Filter internal reasoning metadata from subtitles
+            if (!txt.startsWith("**") && !txt.startsWith("Thinking") && !txt.includes("Choosing a Response") && !txt.includes("I've decided")) {
+              setCurrentSubtitle(txt);
+              setTutorState('speaking');
+              setMessages(prev => {
+                const last = prev[prev.length - 1];
+                if (last && last.sender === 'tutor' && Date.now() - last.timestamp < 3000) {
+                  return [...prev.slice(0, -1), { ...last, text: `${last.text} ${txt}`.trim() }];
                 }
-
-                source.start(nextPlayTimeRef.current);
-                nextPlayTimeRef.current += audioBuf.duration;
-
-                activeSourcesRef.current.push(source);
-                source.onended = () => {
-                  activeSourcesRef.current = activeSourcesRef.current.filter(s => s !== source);
-                  if (activeSourcesRef.current.length === 0 && isCallActiveRef.current) {
-                    setTutorState('listening');
-                  }
-                };
-
-                setTutorState('speaking');
-                setAudioLevel(0.4 + Math.random() * 0.4);
-              }
+                return [...prev, { id: Date.now().toString(), sender: 'tutor', text: txt, timestamp: Date.now() }];
+              });
             }
           }
 
-          // E. Realtime Transcription Text
-          if (msg.serverContent?.outputTranscription?.text) {
-            setCurrentSubtitle(msg.serverContent.outputTranscription.text);
-            setTutorState('speaking');
+          if (data.audio) {
+            playAudioChunk(data.audio);
           }
 
+          if (data.turnComplete) {
+            if (activeSourcesRef.current.length === 0) {
+              isAiSpeakingRef.current = false;
+              setTutorState('listening');
+            }
+          }
         } catch (e) {
-          console.error("Failed to parse incoming Gemini Live message:", e);
+          console.error("Error processing live message:", e);
         }
       };
 
       ws.onerror = (err) => {
-        console.error("Gemini Live WebSocket error:", err);
-        setConnectionStatus('error');
-        setErrorMessage("লাইভ অডিও সংযোগে সমস্যা হয়েছে। অনুগ্রহ করে ইন্টারনেট ও Gemini API Key চেক করুন।");
+        console.error("Live WebSocket Error:", err);
       };
 
-      ws.onclose = (e) => {
-        console.log("Gemini Live WebSocket closed:", e.code, e.reason);
+      ws.onclose = (event) => {
+        console.log("Live WebSocket closed:", event.code, event.reason);
         if (isCallActiveRef.current) {
-          if (e.code === 1008) {
-            setErrorMessage("Gemini API Key সঠিক নয় বা পারমিশন নেই। অনুগ্রহ করে গুগল এআই স্টুডিও থেকে নতুন কি নিন।");
+          if (event.code === 1008 && event.reason?.includes("API key")) {
             if (onRequireApiKey) onRequireApiKey();
-          } else if (e.code !== 1000) {
-            setErrorMessage(`সার্ভার সংযোগ বিচ্ছিন্ন করেছে। (কোড: ${e.code}, কারণ: ${e.reason || 'অজানা'})`);
+            setErrorMessage("AI কোচের সাথে কথা বলতে অনুগ্রহ করে আপনার Gemini API Key যুক্ত করুন।");
           }
           stopCall();
         }
       };
+
+      // 4. Clean 4096-sample (~250ms) buffer with Smart Voice Activity Gating
+      // This sends audio ONLY when the user speaks, eliminating WebSocket buffer lag completely!
+      const source = inputAudioCtx.createMediaStreamSource(stream);
+      const processor = inputAudioCtx.createScriptProcessor(4096, 1, 1);
+      processorRef.current = processor;
+
+      processor.onaudioprocess = (e) => {
+        if (!isCallActiveRef.current) return;
+        const inputData = e.inputBuffer.getChannelData(0);
+
+        let sum = 0;
+        for (let i = 0; i < inputData.length; i++) {
+          sum += inputData[i] * inputData[i];
+        }
+        const rms = Math.sqrt(sum / inputData.length);
+
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          if (!isAiSpeakingRef.current) {
+            const hasVoice = rms > 0.013;
+
+            if (hasVoice) {
+              // User is speaking actively
+              isUserSpeakingRef.current = true;
+              speechTrailingFramesRef.current = 2; // Keep 2 trailing frames (500ms) of natural decay
+              setUserSpeaking(true);
+              setAudioLevel(Math.min(1, rms * 7));
+              setTutorState('listening');
+
+              if (pauseTimerRef.current) {
+                clearTimeout(pauseTimerRef.current);
+                pauseTimerRef.current = null;
+              }
+
+              // Send audio frame immediately
+              const pcm16 = floatTo16BitPCM(inputData);
+              const base64Audio = arrayBufferToBase64(pcm16);
+              wsRef.current.send(JSON.stringify({ audio: base64Audio }));
+
+            } else if (speechTrailingFramesRef.current > 0) {
+              // Send trailing frame for natural tailing of words
+              speechTrailingFramesRef.current--;
+              const pcm16 = floatTo16BitPCM(inputData);
+              const base64Audio = arrayBufferToBase64(pcm16);
+              wsRef.current.send(JSON.stringify({ audio: base64Audio }));
+
+              if (speechTrailingFramesRef.current === 0 && isUserSpeakingRef.current) {
+                setUserSpeaking(false);
+                setAudioLevel(0);
+                
+                // User finished sentence — commit speech to Gemini Live
+                if (!pauseTimerRef.current) {
+                  pauseTimerRef.current = setTimeout(() => {
+                    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN && isCallActiveRef.current) {
+                      wsRef.current.send(JSON.stringify({ endOfSpeech: true }));
+                      setTutorState('thinking');
+                    }
+                    isUserSpeakingRef.current = false;
+                    pauseTimerRef.current = null;
+                  }, 400); // 400ms ultra-fast turn trigger
+                }
+              }
+            } else {
+              // Complete silence: Do NOT send audio to prevent network congestion
+              setUserSpeaking(false);
+              setAudioLevel(0);
+            }
+          } else {
+            // Air is currently speaking — check for Barge-in Interruption (loud speech)
+            if (rms > 0.08) {
+              clearAudioQueue();
+              setTutorState('listening');
+              setUserSpeaking(true);
+              isUserSpeakingRef.current = true;
+              speechTrailingFramesRef.current = 2;
+
+              const pcm16 = floatTo16BitPCM(inputData);
+              const base64Audio = arrayBufferToBase64(pcm16);
+              wsRef.current.send(JSON.stringify({ audio: base64Audio }));
+            }
+          }
+        }
+      };
+
+      source.connect(processor);
+      processor.connect(inputAudioCtx.destination);
 
     } catch (err: any) {
       console.error("Start call error:", err);
@@ -450,24 +430,6 @@ export function useLiveCall(onRequireApiKey?: () => void) {
       stopCall();
     }
   }, [clearAudioQueue, onRequireApiKey, stopCall]);
-
-  const sendManualMessage = useCallback((text: string) => {
-    if (!callActive || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-      return;
-    }
-    const messagePayload = {
-      clientContent: {
-        turns: [
-          {
-            role: "user",
-            parts: [{ text }]
-          }
-        ],
-        turnComplete: true
-      }
-    };
-    wsRef.current.send(JSON.stringify(messagePayload));
-  }, [callActive]);
 
   useEffect(() => {
     return () => {
@@ -483,10 +445,9 @@ export function useLiveCall(onRequireApiKey?: () => void) {
     userSpeaking,
     connectionStatus,
     errorMessage,
+    messages,
     startCall,
     stopCall,
     sendManualMessage,
   };
 }
-
-

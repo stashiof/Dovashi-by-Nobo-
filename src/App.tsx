@@ -37,6 +37,7 @@ export default function App() {
     userSpeaking,
     connectionStatus,
     errorMessage,
+    messages,
     startCall,
     stopCall,
     sendManualMessage
@@ -149,6 +150,7 @@ export default function App() {
             userSpeaking={userSpeaking}
             connectionStatus={connectionStatus}
             errorMessage={errorMessage}
+            messages={messages}
             onStartCall={startCall}
             onStopCall={stopCall}
             onSendManualMessage={sendManualMessage}
