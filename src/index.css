@@ -1,1 +1,84 @@
 @import "tailwindcss";
+
+@layer base {
+  body {
+    background-color: #050811;
+    color: #f8fafc;
+    font-family: 'Plus Jakarta Sans', 'Hind Siliguri', sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+/* 10-Color Luxury Glows and Custom Gradients */
+.glow-emerald {
+  box-shadow: 0 0 25px -5px rgba(16, 185, 129, 0.35);
+}
+.glow-blue {
+  box-shadow: 0 0 25px -5px rgba(14, 165, 233, 0.35);
+}
+.glow-violet {
+  box-shadow: 0 0 25px -5px rgba(139, 92, 246, 0.35);
+}
+.glow-rose {
+  box-shadow: 0 0 25px -5px rgba(236, 72, 153, 0.35);
+}
+.glow-amber {
+  box-shadow: 0 0 25px -5px rgba(245, 158, 11, 0.35);
+}
+.glow-orange {
+  box-shadow: 0 0 25px -5px rgba(249, 115, 22, 0.35);
+}
+.glow-ruby {
+  box-shadow: 0 0 25px -5px rgba(244, 63, 94, 0.35);
+}
+.glow-bronze {
+  box-shadow: 0 0 25px -5px rgba(162, 123, 92, 0.35);
+}
+
+/* 10-Color Multi Rainbow Spectrum Border */
+.spectrum-border {
+  background: linear-gradient(
+    135deg,
+    #f43f5e 0%,
+    #f97316 12%,
+    #eab308 24%,
+    #10b981 36%,
+    #0ea5e9 48%,
+    #8b5cf6 60%,
+    #ec4899 72%,
+    #a27b5c 84%,
+    #ffffff 100%
+  );
+}
+
+.spectrum-text {
+  background: linear-gradient(
+    135deg,
+    #f43f5e,
+    #f97316,
+    #eab308,
+    #10b981,
+    #0ea5e9,
+    #8b5cf6,
+    #ec4899,
+    #a27b5c,
+    #ffffff
+  );
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+@keyframes pulse-slow {
+  0%, 100% {
+    opacity: 0.8;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.03);
+  }
+}
+
+.animate-pulse-slow {
+  animation: pulse-slow 3s ease-in-out infinite;
+}

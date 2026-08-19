@@ -187,11 +187,15 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-amber-500 selection:text-slate-950">
-      {/* Background Decorative Glows */}
+    <div className="min-h-screen bg-[#050811] text-slate-100 flex flex-col font-['Hind_Siliguri',sans-serif] selection:bg-amber-400 selection:text-slate-950">
+      {/* 10-Color Modern Ambient Mesh Glows */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
-        <div className="absolute -top-40 left-1/2 -translate-x-1/2 w-[1000px] h-[500px] bg-gradient-to-b from-indigo-600/10 via-amber-500/5 to-transparent rounded-full blur-3xl" />
-        <div className="absolute bottom-0 left-0 w-96 h-96 bg-emerald-600/5 rounded-full blur-3xl" />
+        {/* Violet & Pink top glow */}
+        <div className="absolute -top-32 left-1/2 -translate-x-1/2 w-[900px] h-[450px] bg-gradient-to-b from-purple-600/10 via-pink-500/5 to-transparent rounded-full blur-3xl" />
+        {/* Emerald bottom left glow */}
+        <div className="absolute bottom-10 left-0 w-80 h-80 bg-emerald-600/8 rounded-full blur-3xl" />
+        {/* Ocean Sky & Amber bottom right glow */}
+        <div className="absolute bottom-20 right-0 w-80 h-80 bg-sky-600/8 rounded-full blur-3xl" />
       </div>
 
       {/* Top Persistent Header */}
@@ -215,7 +219,7 @@ export default function App() {
       />
 
       {/* Main App Container */}
-      <main className="flex-1 z-10 max-w-7xl w-full mx-auto px-4 sm:px-6 pt-6">
+      <main className="flex-1 z-10 max-w-7xl w-full mx-auto px-3 sm:px-6 pt-5">
         {currentView === 'roadmap' ? (
           <RoadmapMap
             patterns={allPatterns}
@@ -273,7 +277,7 @@ export default function App() {
 
       {/* Persistent Audio Indicator if calling while in background */}
       {callActive && currentView === 'roadmap' && (
-        <div className="fixed bottom-5 right-5 z-50 bg-slate-900/95 border border-emerald-500/40 rounded-2xl p-4 shadow-2xl flex items-center gap-3 backdrop-blur-md animate-bounce">
+        <div className="fixed bottom-5 right-5 z-50 bg-[#090d1a]/95 border border-emerald-500/50 rounded-2xl p-4 shadow-2xl flex items-center gap-3 backdrop-blur-xl animate-bounce">
           <div className="w-3 h-3 rounded-full bg-emerald-400 animate-ping" />
           <div className="text-xs font-bold text-slate-200">
             লাইভ স্পিকিং কোচ চালু আছে (Level {currentLevelId})

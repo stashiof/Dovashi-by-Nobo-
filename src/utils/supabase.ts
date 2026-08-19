@@ -13,6 +13,9 @@ export interface UserProfileData {
   updated_at?: string;
 }
 
+const DEFAULT_SUPABASE_URL = 'https://tmekinimlxdpdgkqbyjw.supabase.co';
+const DEFAULT_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRtZWtpbmltbHhkcGRna3FieWp3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzEzMDIzMDIsImV4cCI6MjA4Njg3ODMwMn0.7e_yqO6eM6j8u2hI3PqO9R7V0W5k0X1Y2Z3A4B5C6D';
+
 export function getSupabaseConfig(): { url: string; anonKey: string } {
   try {
     const customUrl = localStorage.getItem(SUPABASE_URL_STORAGE) || '';
@@ -22,11 +25,11 @@ export function getSupabaseConfig(): { url: string; anonKey: string } {
     const envKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || '';
 
     return {
-      url: customUrl.trim() || envUrl.trim(),
-      anonKey: customKey.trim() || envKey.trim(),
+      url: customUrl.trim() || envUrl.trim() || DEFAULT_SUPABASE_URL,
+      anonKey: customKey.trim() || envKey.trim() || DEFAULT_SUPABASE_ANON_KEY,
     };
   } catch (e) {
-    return { url: '', anonKey: '' };
+    return { url: DEFAULT_SUPABASE_URL, anonKey: DEFAULT_SUPABASE_ANON_KEY };
   }
 }
 
