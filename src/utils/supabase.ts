@@ -87,75 +87,8 @@ export function isSupabaseConfigured(): boolean {
   return Boolean(url && anonKey);
 }
 
-// Native + Web Google Sign-In helper
-export async function performGoogleSignIn(): Promise<{ success: boolean; user?: User; error?: string }> {
-  const supabase = getSupabaseClient();
-  if (!supabase) {
-    return { success: false, error: 'সার্ভার সংযোগ সমস্যা। কিছুক্ষণ পর আবার চেষ্টা করুন।' };
-  }
-
-  // 1. If running on native Android / iOS app via Capacitor:
-  // Native bottom-sheet account picker appears right inside the app!
-  if (Capacitor.isNativePlatform()) {
-    try {
-      try {
-        GoogleAuth.initialize({
-          clientId: '348785349910-o3e8g44mvdn85t03l8b7k8q29g65r1u9.apps.googleusercontent.com',
-          scopes: ['profile', 'email'],
-          grantOfflineAccess: true,
-        });
-      } catch (initErr) {
-        console.log('GoogleAuth already initialized or ignored:', initErr);
-      }
-
-      const googleUser = await GoogleAuth.signIn();
-      const idToken = googleUser?.authentication?.idToken;
-
-      if (!idToken) {
-        throw new Error('Google ID Token পাওয়া যায়নি।');
-      }
-
-      // Native Supabase login via Google ID token
-      const { data, error } = await supabase.auth.signInWithIdToken({
-        provider: 'google',
-        token: idToken,
-      });
-
-      if (error) throw error;
-      return { success: true, user: data.user };
-    } catch (nativeErr: any) {
-      console.warn('Native Google Auth encountered error:', nativeErr);
-      if (
-        nativeErr?.message?.includes('cancel') ||
-        nativeErr?.message?.includes('12501') ||
-        nativeErr?.code === '12501'
-      ) {
-        return { success: false, error: 'সাইন-ইন বাতিল করা হয়েছে।' };
-      }
-      // If native fails, try web fallback below
-    }
-  }
-
-  // 2. Web / Browser fallback
-  try {
-    const redirectUrl = typeof window !== 'undefined' && window.location.origin && !window.location.origin.includes('localhost')
-      ? window.location.origin
-      : window.location.href.split('#')[0];
-
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: redirectUrl,
-      },
-    });
-
-    if (error) throw error;
-    return { success: true };
-  } catch (err: any) {
-    console.error('Google sign in error:', err);
-    return { success: false, error: err.message || 'গুগল সাইন-ইন করা সম্ভব হয়নি।' };
-  }
-}
+// Native + Web Google Sign-In helper re-exported from nativeGoogleAuth
+export { performGoogleSignIn } from './nativeGoogleAuth';
 
 // SQL setup script for user to copy into Supabase SQL Editor
 export const SUPABASE_SQL_SCHEMA = `-- 1. Create profiles table

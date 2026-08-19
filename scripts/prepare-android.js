@@ -171,8 +171,11 @@ console.log('✓ Configured Adaptive Vector Drawables for modern Android');
 const buildGradlePath = path.resolve('android/app/build.gradle');
 if (fs.existsSync(buildGradlePath)) {
   let gradleContent = fs.readFileSync(buildGradlePath, 'utf8');
-  if (gradleContent.includes('minifyEnabled false')) {
-    gradleContent = gradleContent.replace('minifyEnabled false', 'minifyEnabled true\n            shrinkResources true');
+  if (gradleContent.includes('minifyEnabled true')) {
+    gradleContent = gradleContent.replace('minifyEnabled true', 'minifyEnabled false');
+  }
+  if (gradleContent.includes('shrinkResources true')) {
+    gradleContent = gradleContent.replace('shrinkResources true', 'shrinkResources false');
   }
   const excludeRule = `
 configurations.all {
@@ -184,27 +187,28 @@ configurations.all {
     gradleContent += excludeRule;
   }
   fs.writeFileSync(buildGradlePath, gradleContent, 'utf8');
-  console.log('✓ Updated build.gradle with ProGuard obfuscation & kotlin exclusion');
+  console.log('✓ Updated build.gradle with safe plugin execution settings');
 }
 
 const proguardRulesPath = path.resolve('android/app/proguard-rules.pro');
 if (fs.existsSync(proguardRulesPath)) {
   let rules = fs.readFileSync(proguardRulesPath, 'utf8');
   const securityRules = `
-# Dovashi App Security & Anti-Decompile Protection Rules
--keepclassmembers class * {
-    @android.webkit.JavascriptInterface <methods>;
-}
+# Dovashi Google Auth & Capacitor Native Keep Rules
+-keep public class com.getcapacitor.** { *; }
+-keep public class * extends com.getcapacitor.Plugin { *; }
+-keep class com.codetrixstudio.capacitor.GoogleAuth.** { *; }
+-keep class com.google.android.gms.auth.** { *; }
+-keep class com.google.android.gms.common.** { *; }
+-keep class com.google.android.gms.tasks.** { *; }
+-dontwarn com.google.android.gms.**
+-dontwarn com.codetrixstudio.**
 -keepattributes *Annotation*,Signature,InnerClasses,EnclosingMethod
--dontwarn org.apache.cordova.**
--dontwarn com.getcapacitor.**
--repackageclasses 'com.dovashi.security'
--allowaccessmodification
 `;
-  if (!rules.includes('Dovashi App Security')) {
+  if (!rules.includes('Dovashi Google Auth')) {
     rules += securityRules;
     fs.writeFileSync(proguardRulesPath, rules, 'utf8');
-    console.log('✓ Injected ProGuard rules');
+    console.log('✓ Injected Google Auth & Capacitor keep rules');
   }
 }
 
