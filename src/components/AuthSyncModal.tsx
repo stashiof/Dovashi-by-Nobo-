@@ -52,10 +52,17 @@ export const AuthSyncModal: React.FC<AuthSyncModalProps> = ({
 
   useEffect(() => {
     if (isOpen) {
-      setErrorMsg('');
-      setSuccessMsg('');
+      if (currentUser) {
+        setLoading(false);
+        setSuccessMsg('সফলভাবে লগইন হয়েছে!');
+        const timer = setTimeout(() => onClose(), 1000);
+        return () => clearTimeout(timer);
+      } else {
+        setErrorMsg('');
+        setSuccessMsg('');
+      }
     }
-  }, [isOpen, currentUser]);
+  }, [isOpen, currentUser, onClose]);
 
   if (!isOpen) return null;
 
