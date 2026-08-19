@@ -14,6 +14,7 @@ import {
   Award
 } from 'lucide-react';
 import { User } from '@supabase/supabase-js';
+import { performGoogleSignIn } from '../utils/nativeGoogleAuth';
 import {
   getSupabaseClient,
   syncUserDataToSupabase,
@@ -63,22 +64,15 @@ export const AuthSyncModal: React.FC<AuthSyncModalProps> = ({
     setSuccessMsg('');
     setLoading(true);
 
-    const supabase = getSupabaseClient();
-    if (!supabase) {
-      setErrorMsg('সার্ভার সংযোগ সমস্যা। কিছুক্ষণ পর আবার চেষ্টা করুন।');
-      setLoading(false);
-      return;
-    }
-
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: window.location.origin,
-        },
-      });
-
-      if (error) throw error;
+      const res = await performGoogleSignIn();
+      if (!res.success && res.error) {
+        setErrorMsg(res.error);
+      } else if (res.user) {
+        setCurrentUser(res.user);
+        setSuccessMsg('গুগল দিয়ে সফলভাবে লগইন হয়েছে!');
+        setTimeout(() => onClose(), 1200);
+      }
     } catch (err: any) {
       console.error('Google sign in error:', err);
       setErrorMsg(err.message || 'গুগল সাইন-ইন করা সম্ভব হয়নি।');

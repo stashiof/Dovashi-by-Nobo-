@@ -71,6 +71,22 @@ public class MainActivity extends BridgeActivity {
 fs.writeFileSync(mainActivityPath, activityCode, 'utf8');
 console.log('✓ Injected runtime audio permission handler into MainActivity.java');
 
+// 2.1 Ensure strings.xml contains Native Google Auth configuration
+const stringsDir = path.resolve('android/app/src/main/res/values');
+fs.mkdirSync(stringsDir, { recursive: true });
+const stringsPath = path.join(stringsDir, 'strings.xml');
+const stringsContent = `<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Dovashi</string>
+    <string name="title_activity_main">Dovashi</string>
+    <string name="package_name">com.nobo.dovashi</string>
+    <string name="custom_url_scheme">com.nobo.dovashi</string>
+    <string name="server_client_id">348785349910-o3e8g44mvdn85t03l8b7k8q29g65r1u9.apps.googleusercontent.com</string>
+</resources>
+`;
+fs.writeFileSync(stringsPath, stringsContent, 'utf8');
+console.log('✓ Configured native strings.xml for Google Sign-In');
+
 // 3. Inject App Icons into all mipmap folders
 const resDir = path.resolve('android/app/src/main/res');
 
