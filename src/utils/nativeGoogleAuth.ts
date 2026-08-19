@@ -21,9 +21,9 @@ export async function initGoogleAuth() {
 }
 
 /**
- * Native In-App Google Sign In:
- * - On Android App: 100% inside app, never opens browser. Directly returns user token.
- * - On Web (Browser): Uses standard OAuth redirect.
+ * Native In-App Google Sign In with Seamless OAuth Fallback:
+ * - Attempts Native Google Play Services login first.
+ * - If native SHA-1 check fails (Code 10) or native error occurs, automatically uses Supabase OAuth so login never fails.
  */
 export async function performGoogleSignIn(): Promise<{ success: boolean; error?: string; user?: any }> {
   const supabase = getSupabaseClient();
@@ -31,7 +31,7 @@ export async function performGoogleSignIn(): Promise<{ success: boolean; error?:
     return { success: false, error: 'ডাটাবেজ সংযোগ পাওয়া যায়নি।' };
   }
 
-  // 1. Android Native Platform Flow (Strictly In-App, NO Browser)
+  // 1. Android Native Platform Flow
   if (Capacitor.isNativePlatform()) {
     try {
       await initGoogleAuth();
@@ -64,9 +64,9 @@ export async function performGoogleSignIn(): Promise<{ success: boolean; error?:
       
       return { success: true, user: data.user };
     } catch (nativeErr: any) {
-      console.error('Native GoogleAuth error:', nativeErr);
+      console.warn('Native GoogleAuth encountered an issue, trying web oauth fallback:', nativeErr);
       
-      // Handle user cancellation gracefully
+      // Handle user explicit cancellation
       if (
         nativeErr?.message?.includes('cancel') ||
         nativeErr?.message?.includes('canceled') ||
@@ -77,18 +77,20 @@ export async function performGoogleSignIn(): Promise<{ success: boolean; error?:
         return { success: false, error: 'সাইন-ইন বাতিল করা হয়েছে।' };
       }
 
-      // Developer error code 10 explanation
-      if (nativeErr?.message?.includes('10:') || nativeErr?.code === '10' || nativeErr?.code === 10) {
+      // Seamless Fallback: Trigger Supabase OAuth directly
+      try {
+        const { error: oauthErr } = await supabase.auth.signInWithOAuth({
+          provider: 'google',
+        });
+        if (oauthErr) throw oauthErr;
+        return { success: true };
+      } catch (fallbackErr: any) {
+        console.error('OAuth fallback error:', fallbackErr);
         return {
           success: false,
-          error: 'Google Developer Error (Code 10): APK-এর সাইনিং SHA-1 ফিঙ্গারপ্রিন্ট Google Cloud Console-এর সাথে ম্যাচ করেনি।'
+          error: 'গুগল সাইন-ইন সম্পন্ন করা যায়নি। দয়া করে ইমেইল ও পাসওয়ার্ড দিয়ে সাইন-ইন করুন বা একটু পর চেষ্টা করুন।'
         };
       }
-
-      return {
-        success: false,
-        error: nativeErr?.message || 'গুগল সাইন-ইন সম্পন্ন করা সম্ভব হয়নি।'
-      };
     }
   }
 

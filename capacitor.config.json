@@ -12,9 +12,7 @@
   "plugins": {
     "GoogleAuth": {
       "scopes": ["profile", "email"],
-      "clientId": "348785349910-o3e8g44mvdn85t03l8b7k8q29g65r1u9.apps.googleusercontent.com",
       "serverClientId": "348785349910-o3e8g44mvdn85t03l8b7k8q29g65r1u9.apps.googleusercontent.com",
-      "androidClientId": "348785349910-o3e8g44mvdn85t03l8b7k8q29g65r1u9.apps.googleusercontent.com",
       "forceCodeForRefreshToken": false
     }
   }
