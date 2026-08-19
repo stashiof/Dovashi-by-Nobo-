@@ -23,7 +23,7 @@ jobs:
 
       - name: Install Project Dependencies
         run: |
-          npm install --no-audit --no-fund --prefer-offline
+          npm install --legacy-peer-deps --no-audit --no-fund
 
       - name: Build Web Application & Pre-generate Assets
         run: |
