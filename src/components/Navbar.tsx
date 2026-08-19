@@ -1,6 +1,7 @@
 import React from 'react';
 import { UserStats } from '../types';
-import { Sparkles, Flame, Bookmark, BookOpen, Key, Check } from 'lucide-react';
+import { Sparkles, Flame, Bookmark, BookOpen, Key, Check, Database, Cloud, User as UserIcon } from 'lucide-react';
+import { User } from '@supabase/supabase-js';
 
 interface NavbarProps {
   stats: UserStats;
@@ -10,6 +11,8 @@ interface NavbarProps {
   totalLevels: number;
   hasApiKey: boolean;
   onOpenApiKeyModal: () => void;
+  currentUser: User | null;
+  onOpenAuthSyncModal: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -19,7 +22,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   showingBookmarks,
   totalLevels,
   hasApiKey,
-  onOpenApiKeyModal
+  onOpenApiKeyModal,
+  currentUser,
+  onOpenAuthSyncModal
 }) => {
   const completedCount = stats.completedLevelIds.length;
   const progressPercent = Math.round((completedCount / totalLevels) * 100);
@@ -60,12 +65,31 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
 
         {/* Stats & Gamification Badges */}
-        <div className="flex items-center gap-2 sm:gap-3 flex-wrap justify-center font-['Hind_Siliguri',sans-serif]">
+        <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap justify-center font-['Hind_Siliguri',sans-serif]">
+          
+          {/* Supabase Cloud Account & Sync Button */}
+          <button
+            id="navbar-auth-sync-btn"
+            onClick={onOpenAuthSyncModal}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
+              currentUser
+                ? 'bg-emerald-500/15 hover:bg-emerald-500/25 border-emerald-500/40 text-emerald-300 shadow-sm'
+                : 'bg-gradient-to-r from-teal-500/15 to-emerald-500/15 hover:from-teal-500/25 hover:to-emerald-500/25 border-emerald-500/30 text-emerald-300'
+            }`}
+            title={currentUser ? `লগইনকৃত: ${currentUser.email} (ক্লাউড সিঙ্ক চালু)` : 'Supabase ডাটাবেজ ব্যাকআপ ও অ্যাকাউন্ট'}
+          >
+            <Cloud className="w-3.5 h-3.5 text-emerald-400" />
+            <span className="max-w-[130px] truncate">
+              {currentUser ? (currentUser.user_metadata?.full_name || currentUser.email?.split('@')[0] || 'ক্লাউড সিঙ্ক') : 'ক্লাউড ব্যাকআপ'}
+            </span>
+            {currentUser && <Check className="w-3 h-3 text-emerald-400" />}
+          </button>
+
           {/* API Key Connection Button */}
           <button
             id="navbar-api-key-btn"
             onClick={onOpenApiKeyModal}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold border transition-all ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
               hasApiKey
                 ? 'bg-emerald-500/10 hover:bg-emerald-500/20 border-emerald-500/30 text-emerald-400'
                 : 'bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 border-amber-500/40 text-amber-300 animate-pulse'
@@ -73,18 +97,18 @@ export const Navbar: React.FC<NavbarProps> = ({
             title={hasApiKey ? 'Gemini API Key সংযুক্ত আছে' : 'Gemini API Key যোগ করুন'}
           >
             <Key className={`w-3.5 h-3.5 ${hasApiKey ? 'text-emerald-400' : 'text-amber-400'}`} />
-            <span>{hasApiKey ? 'API Key Connected' : 'API Key যোগ করুন'}</span>
+            <span>{hasApiKey ? 'API Key' : 'API Key দিন'}</span>
             {hasApiKey && <Check className="w-3 h-3 text-emerald-400" />}
           </button>
 
           {/* Daily Streak */}
-          <div className="flex items-center gap-1.5 bg-gradient-to-r from-orange-500/15 to-amber-500/15 border border-orange-500/30 text-orange-300 px-3.5 py-1.5 rounded-xl text-xs font-bold shadow-sm backdrop-blur-sm">
+          <div className="flex items-center gap-1.5 bg-gradient-to-r from-orange-500/15 to-amber-500/15 border border-orange-500/30 text-orange-300 px-3 py-1.5 rounded-xl text-xs font-bold shadow-sm backdrop-blur-sm">
             <Flame className="w-4 h-4 text-orange-400 fill-orange-400 animate-pulse" />
-            <span>{stats.streakDays} দিন স্ট্রিক</span>
+            <span>{stats.streakDays} দিন</span>
           </div>
 
           {/* XP Badge */}
-          <div className="flex items-center gap-1.5 bg-indigo-500/15 border border-indigo-500/30 text-indigo-200 px-3.5 py-1.5 rounded-xl text-xs font-bold shadow-sm backdrop-blur-sm">
+          <div className="flex items-center gap-1.5 bg-indigo-500/15 border border-indigo-500/30 text-indigo-200 px-3 py-1.5 rounded-xl text-xs font-bold shadow-sm backdrop-blur-sm">
             <Sparkles className="w-4 h-4 text-indigo-400 fill-indigo-400" />
             <span className="font-['Plus_Jakarta_Sans',sans-serif]">{stats.totalXp} XP</span>
           </div>
@@ -92,30 +116,28 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* Completed Progress */}
           <div 
             onClick={onOpenRoadmap}
-            className="flex items-center gap-2 bg-slate-800/80 hover:bg-slate-800 border border-slate-700/80 text-slate-200 px-3.5 py-1.5 rounded-xl text-xs font-semibold cursor-pointer transition-all hover:border-slate-600"
+            className="flex items-center gap-2 bg-slate-800/80 hover:bg-slate-800 border border-slate-700/80 text-slate-200 px-3 py-1.5 rounded-xl text-xs font-semibold cursor-pointer transition-all hover:border-slate-600"
           >
             <BookOpen className="w-3.5 h-3.5 text-emerald-400" />
-            <span>{completedCount}/{totalLevels} লেভেল</span>
-            <div className="w-14 h-2 bg-slate-950 rounded-full overflow-hidden hidden sm:block p-[1px] border border-slate-700">
+            <span>{completedCount}/{totalLevels}</span>
+            <div className="w-12 h-2 bg-slate-950 rounded-full overflow-hidden hidden sm:block p-[1px] border border-slate-700">
               <div 
                 className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full transition-all duration-500 shadow-sm"
                 style={{ width: `${Math.max(5, progressPercent)}%` }}
               />
             </div>
-            <span className="text-[11px] text-emerald-400 font-bold hidden sm:inline font-['Plus_Jakarta_Sans',sans-serif]">{progressPercent}%</span>
           </div>
 
           {/* Bookmarks Toggle */}
           <button
             onClick={onOpenBookmarks}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
               showingBookmarks
                 ? 'bg-amber-500 text-slate-950 border-amber-400 font-bold shadow-lg shadow-amber-500/25'
                 : 'bg-slate-800/80 hover:bg-slate-800 border-slate-700/80 text-slate-300'
             }`}
           >
             <Bookmark className={`w-3.5 h-3.5 ${showingBookmarks ? 'fill-slate-950' : 'text-amber-400'}`} />
-            <span className="hidden sm:inline">সংরক্ষিত</span>
             <span className="font-['Plus_Jakarta_Sans',sans-serif]">({stats.bookmarkedLevelIds.length})</span>
           </button>
         </div>
@@ -123,3 +145,4 @@ export const Navbar: React.FC<NavbarProps> = ({
     </header>
   );
 };
+

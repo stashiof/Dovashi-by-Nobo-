@@ -1,12 +1,26 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Navbar } from './components/Navbar';
 import { RoadmapMap } from './components/RoadmapMap';
 import { LevelLearningView } from './components/LevelLearningView';
 import { ApiKeyModal } from './components/ApiKeyModal';
+import { AuthSyncModal } from './components/AuthSyncModal';
 import { getAll300Patterns } from './data/masterPatternsData';
-import { getStoredUserStats, recordLevelProgress, toggleLevelBookmark, getUserApiKey } from './utils/storage';
+import {
+  getStoredUserStats,
+  recordLevelProgress,
+  toggleLevelBookmark,
+  getUserApiKey,
+  saveUserApiKey,
+  saveUserStats
+} from './utils/storage';
+import {
+  getSupabaseClient,
+  fetchUserDataFromSupabase,
+  syncUserDataToSupabase
+} from './utils/supabase';
 import { useLiveCall } from './hooks/useLiveCall';
 import { Pattern, UserStats } from './types';
+import { User } from '@supabase/supabase-js';
 
 export default function App() {
   const [stats, setStats] = useState<UserStats>(() => getStoredUserStats());
@@ -14,7 +28,53 @@ export default function App() {
   const [currentView, setCurrentView] = useState<'roadmap' | 'level'>('roadmap');
   const [showingBookmarksOnly, setShowingBookmarksOnly] = useState(false);
   const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
+  const [isAuthSyncModalOpen, setIsAuthSyncModalOpen] = useState(false);
   const [hasApiKey, setHasApiKey] = useState<boolean>(() => !!getUserApiKey());
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+
+  const currentUserRef = useRef<User | null>(null);
+  currentUserRef.current = currentUser;
+
+  // Supabase Auth Listener & Initial Cloud Sync
+  useEffect(() => {
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+
+    // Check existing session
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (session?.user) {
+        setCurrentUser(session.user);
+        // Pull latest profile
+        const profileRes = await fetchUserDataFromSupabase(session.user.id);
+        if (profileRes.success && profileRes.data) {
+          if (profileRes.data.gemini_api_key) {
+            saveUserApiKey(profileRes.data.gemini_api_key);
+            setHasApiKey(true);
+          }
+          if (profileRes.data.stats_data) {
+            saveUserStats(profileRes.data.stats_data);
+            setStats(profileRes.data.stats_data);
+            if (profileRes.data.stats_data.currentLevelId) {
+              setCurrentLevelId(profileRes.data.stats_data.currentLevelId);
+            }
+          }
+        }
+      }
+    });
+
+    // Listen to auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (session?.user) {
+        setCurrentUser(session.user);
+      } else {
+        setCurrentUser(null);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
 
   // Load all 300 patterns
   const allPatterns: Pattern[] = useMemo(() => getAll300Patterns(), []);
@@ -26,6 +86,10 @@ export default function App() {
 
   const handleOpenApiKeyModal = useCallback(() => {
     setIsApiKeyModalOpen(true);
+  }, []);
+
+  const handleOpenAuthSyncModal = useCallback(() => {
+    setIsAuthSyncModalOpen(true);
   }, []);
 
   // Real-time Gemini Live voice tutor
@@ -58,7 +122,15 @@ export default function App() {
   const handleNextLevel = () => {
     if (currentLevelId < 300) {
       if (callActive) stopCall();
-      setCurrentLevelId(prev => prev + 1);
+      const nextId = currentLevelId + 1;
+      setCurrentLevelId(nextId);
+      // Auto save currentLevelId
+      const updated = { ...stats, currentLevelId: nextId };
+      setStats(updated);
+      saveUserStats(updated);
+      if (currentUserRef.current) {
+        syncUserDataToSupabase(currentUserRef.current, updated, getUserApiKey());
+      }
     }
   };
 
@@ -66,7 +138,14 @@ export default function App() {
   const handlePrevLevel = () => {
     if (currentLevelId > 1) {
       if (callActive) stopCall();
-      setCurrentLevelId(prev => prev - 1);
+      const prevId = currentLevelId - 1;
+      setCurrentLevelId(prevId);
+      const updated = { ...stats, currentLevelId: prevId };
+      setStats(updated);
+      saveUserStats(updated);
+      if (currentUserRef.current) {
+        syncUserDataToSupabase(currentUserRef.current, updated, getUserApiKey());
+      }
     }
   };
 
@@ -74,6 +153,9 @@ export default function App() {
   const handleToggleBookmark = (levelId: number) => {
     const updated = toggleLevelBookmark(levelId);
     setStats(updated);
+    if (currentUserRef.current) {
+      syncUserDataToSupabase(currentUserRef.current, updated, getUserApiKey());
+    }
   };
 
   // Record user progress & gamification stars
@@ -91,6 +173,17 @@ export default function App() {
       speakingDone
     );
     setStats(updated);
+    // Background cloud sync to Supabase
+    if (currentUserRef.current) {
+      syncUserDataToSupabase(currentUserRef.current, updated, getUserApiKey());
+    }
+  };
+
+  const handleApiKeySaved = (key: string) => {
+    setHasApiKey(!!key);
+    if (currentUserRef.current) {
+      syncUserDataToSupabase(currentUserRef.current, stats, key);
+    }
   };
 
   return (
@@ -107,6 +200,8 @@ export default function App() {
         totalLevels={300}
         hasApiKey={hasApiKey}
         onOpenApiKeyModal={handleOpenApiKeyModal}
+        currentUser={currentUser}
+        onOpenAuthSyncModal={handleOpenAuthSyncModal}
         showingBookmarks={showingBookmarksOnly}
         onOpenRoadmap={() => {
           if (callActive) stopCall();
@@ -162,7 +257,18 @@ export default function App() {
       <ApiKeyModal
         isOpen={isApiKeyModalOpen}
         onClose={() => setIsApiKeyModalOpen(false)}
-        onKeySaved={(key) => setHasApiKey(!!key)}
+        onKeySaved={handleApiKeySaved}
+      />
+
+      {/* Supabase Cloud Auth & Sync Modal */}
+      <AuthSyncModal
+        isOpen={isAuthSyncModalOpen}
+        onClose={() => setIsAuthSyncModalOpen(false)}
+        currentUser={currentUser}
+        setCurrentUser={setCurrentUser}
+        userStats={stats}
+        setUserStats={setStats}
+        onApiKeyUpdated={() => setHasApiKey(!!getUserApiKey())}
       />
 
       {/* Persistent Audio Indicator if calling while in background */}
@@ -189,4 +295,3 @@ export default function App() {
     </div>
   );
 }
-
