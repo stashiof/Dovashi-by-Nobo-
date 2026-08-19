@@ -26,6 +26,10 @@ jobs:
           npm install --legacy-peer-deps --no-audit --no-fund
 
       - name: Build Web Application & Pre-generate Assets
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || secrets.SUPABASE_URL || 'https://tmekinimlxdpdgkqbyjw.supabase.co' }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || secrets.SUPABASE_ANON_KEY || secrets.SUPABASE_KEY }}
+          VITE_GEMINI_API_KEY: ${{ secrets.VITE_GEMINI_API_KEY || secrets.GEMINI_API_KEY }}
         run: |
           npm run build
           node scripts/generate-icons.js
