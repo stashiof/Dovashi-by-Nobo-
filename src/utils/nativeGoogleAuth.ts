@@ -47,11 +47,15 @@ export async function performGoogleSignIn(): Promise<{ success: boolean; error?:
       }
 
       // Direct native login to Supabase using Google ID Token
-      const { data, error } = await supabase.auth.signInWithIdToken({
+      const authPayload: { provider: 'google'; token: string; access_token?: string } = {
         provider: 'google',
         token: idToken,
-        access_token: accessToken,
-      });
+      };
+      if (accessToken && typeof accessToken === 'string' && accessToken.length > 5) {
+        authPayload.access_token = accessToken;
+      }
+
+      const { data, error } = await supabase.auth.signInWithIdToken(authPayload);
 
       if (error) {
         console.error('Supabase signInWithIdToken error:', error);

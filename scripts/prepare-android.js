@@ -19,7 +19,7 @@ if (fs.existsSync(manifestPath)) {
   }
 }
 
-// 2. Create MainActivity.java with Runtime Audio WebChromeClient handler
+// 2. Create MainActivity.java with Runtime Audio WebChromeClient handler and GoogleAuth plugin registration
 const mainActivityDir = path.resolve('android/app/src/main/java/com/nobo/dovashi');
 fs.mkdirSync(mainActivityDir, { recursive: true });
 const mainActivityPath = path.join(mainActivityDir, 'MainActivity.java');
@@ -34,10 +34,12 @@ import android.webkit.WebChromeClient;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import com.getcapacitor.BridgeActivity;
+import com.codetrixstudio.capacitor.GoogleAuth.GoogleAuth;
 
 public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        registerPlugin(GoogleAuth.class);
         super.onCreate(savedInstanceState);
         
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
@@ -69,7 +71,7 @@ public class MainActivity extends BridgeActivity {
 `;
 
 fs.writeFileSync(mainActivityPath, activityCode, 'utf8');
-console.log('✓ Injected runtime audio permission handler into MainActivity.java');
+console.log('✓ Injected runtime audio & GoogleAuth plugin into MainActivity.java');
 
 // 2.1 Ensure strings.xml contains Native Google Auth configuration
 const stringsDir = path.resolve('android/app/src/main/res/values');
