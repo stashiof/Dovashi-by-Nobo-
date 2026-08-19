@@ -81,7 +81,7 @@ export async function performGoogleSignIn(): Promise<{ success: boolean; error?:
       if (nativeErr?.message?.includes('10:') || nativeErr?.code === '10' || nativeErr?.code === 10) {
         return {
           success: false,
-          error: 'Google Cloud Console-এ SHA-1 সিঙ্ক হতে ৩-৫ মিনিট সময় নিচ্ছে। দয়া করে কিছুক্ষণ পর আবার চেষ্টা করুন।'
+          error: 'Google Developer Error (Code 10): APK-এর সাইনিং SHA-1 ফিঙ্গারপ্রিন্ট Google Cloud Console-এর সাথে ম্যাচ করেনি।'
         };
       }
 
