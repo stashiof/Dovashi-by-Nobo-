@@ -70,10 +70,13 @@ jobs:
           if [ -n "$KEYSTORE_BASE64" ]; then
             echo "$KEYSTORE_BASE64" | base64 --decode > android/app/release.keystore
             echo "Decoded keystore from GitHub Secret KEYSTORE_BASE64."
+          elif [ -f "keystore/release.keystore" ]; then
+            cp keystore/release.keystore android/app/release.keystore
+            echo "Restored persistent release.keystore from project repository."
           fi
           
           if [ ! -f "android/app/release.keystore" ]; then
-            echo "Generating standard deterministic production keystore..."
+            echo "Generating fallback production keystore..."
             keytool -genkeypair -v -keystore android/app/release.keystore \
               -alias "$KEY_ALIAS" \
               -keyalg RSA -keysize 2048 -validity 10000 \
