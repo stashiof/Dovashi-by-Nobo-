@@ -25,6 +25,14 @@ jobs:
         run: |
           npm install --legacy-peer-deps --no-audit --no-fund
 
+      - name: Inject Google Web Client ID
+        env:
+          GOOGLE_WEB_CLIENT_ID: ${{ secrets.GOOGLE_WEB_CLIENT_ID || '348785349910-o3e8g44mvdn85t03l8b7k8q29g65r1u9.apps.googleusercontent.com' }}
+        run: |
+          sed -i "s/348785349910-o3e8g44mvdn85t03l8b7k8q29g65r1u9.apps.googleusercontent.com/$GOOGLE_WEB_CLIENT_ID/g" capacitor.config.json
+          sed -i "s/348785349910-o3e8g44mvdn85t03l8b7k8q29g65r1u9.apps.googleusercontent.com/$GOOGLE_WEB_CLIENT_ID/g" src/utils/nativeGoogleAuth.ts
+          sed -i "s/348785349910-o3e8g44mvdn85t03l8b7k8q29g65r1u9.apps.googleusercontent.com/$GOOGLE_WEB_CLIENT_ID/g" scripts/prepare-android.js
+
       - name: Build Web Application & Pre-generate Assets
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || secrets.SUPABASE_URL || 'https://tmekinimlxdpdgkqbyjw.supabase.co' }}

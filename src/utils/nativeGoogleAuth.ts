@@ -64,7 +64,7 @@ export async function performGoogleSignIn(): Promise<{ success: boolean; error?:
       
       return { success: true, user: data.user };
     } catch (nativeErr: any) {
-      console.warn('Native GoogleAuth encountered an issue, trying web oauth fallback:', nativeErr);
+      console.error('Native GoogleAuth error:', nativeErr);
       
       // Handle user explicit cancellation
       if (
@@ -77,20 +77,18 @@ export async function performGoogleSignIn(): Promise<{ success: boolean; error?:
         return { success: false, error: 'সাইন-ইন বাতিল করা হয়েছে।' };
       }
 
-      // Seamless Fallback: Trigger Supabase OAuth directly
-      try {
-        const { error: oauthErr } = await supabase.auth.signInWithOAuth({
-          provider: 'google',
-        });
-        if (oauthErr) throw oauthErr;
-        return { success: true };
-      } catch (fallbackErr: any) {
-        console.error('OAuth fallback error:', fallbackErr);
+      // Developer error code 10 explanation
+      if (nativeErr?.message?.includes('10:') || nativeErr?.code === '10' || nativeErr?.code === 10) {
         return {
           success: false,
-          error: 'গুগল সাইন-ইন সম্পন্ন করা যায়নি। দয়া করে ইমেইল ও পাসওয়ার্ড দিয়ে সাইন-ইন করুন বা একটু পর চেষ্টা করুন।'
+          error: 'Google Developer Error (Code 10): SHA-1 ফিঙ্গারপ্রিন্ট অথবা Google Web Client ID ভুল আছে। দয়া করে গিটহাব সিক্রেট চেক করুন।'
         };
       }
+
+      return {
+        success: false,
+        error: nativeErr?.message || 'গুগল সাইন-ইন সম্পন্ন করা সম্ভব হয়নি।'
+      };
     }
   }
 
