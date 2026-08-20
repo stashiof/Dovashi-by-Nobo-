@@ -1,5 +1,15 @@
 export type CategoryPart = 1 | 2 | 3;
 
+export interface Course {
+  id: string;
+  title: string;
+  sourceLanguage: string; // The user's native language (e.g. "Bengali", "Hindi")
+  targetLanguage: string; // The language they are learning (e.g. "English")
+  description: string;
+  icon: string;
+  status: 'active' | 'coming_soon';
+}
+
 export interface PowerWord {
   word: string;
   meaning: string;
@@ -54,7 +64,7 @@ export interface Pattern {
   partTitle: string;
   patternNumber: string; // e.g. "Pattern 001"
   structure: string;
-  bengaliMeaning: string;
+  bengaliMeaning: string; // or native meaning
   categoryTag: string;
   difficulty: 'Beginner' | 'Intermediate' | 'Advanced';
   sentenceBuilding: Array<{ en: string; bn: string }>;
@@ -84,7 +94,9 @@ export interface UserStats {
   lastActiveDate: string;
   completedLevelIds: number[];
   bookmarkedLevelIds: number[];
-  levelProgressMap: Record<number, LevelProgress>;
+  levelProgressMap: Record<number, LevelProgress>; // Map based on pattern ID (future: prefixed with courseId)
   currentLevelId: number;
   userName: string;
+  joinedCourseIds?: string[]; // Courses user is enrolled in
+  currentCourseId?: string; // Currently active course
 }

@@ -12,7 +12,9 @@ interface NavbarProps {
   hasApiKey: boolean;
   onOpenApiKeyModal: () => void;
   currentUser: User | null;
-  onOpenAuthSyncModal: () => void;
+  onChangeCourse?: () => void;
+  onOpenAuthSyncModal,
+  onChangeCourse: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -24,7 +26,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   hasApiKey,
   onOpenApiKeyModal,
   currentUser,
-  onOpenAuthSyncModal
+  onOpenAuthSyncModal,
+  onChangeCourse
 }) => {
   const completedCount = stats.completedLevelIds.length;
   const progressPercent = Math.round((completedCount / totalLevels) * 100);
@@ -55,6 +58,15 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           <div>
             <div className="flex items-center gap-2">
+            {onChangeCourse && (
+              <button
+                onClick={onChangeCourse}
+                title="Change Course"
+                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-700/50 hover:bg-slate-800 text-xs font-semibold text-slate-300 transition-colors"
+              >
+                Change Course
+              </button>
+            )}
               <h1 className="text-white font-black text-lg sm:text-xl tracking-tight flex items-center gap-1.5 font-['Plus_Jakarta_Sans',sans-serif]">
                 Dovashi <span className="text-xs font-bold text-amber-400 font-['Hind_Siliguri',sans-serif]">(দোভাষী)</span>
               </h1>
@@ -78,7 +90,8 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* 🟢 Emerald / Jade Profile & Auth Button */}
           <button
             id="navbar-auth-sync-btn"
-            onClick={onOpenAuthSyncModal}
+            onClick={onOpenAuthSyncModal,
+  onChangeCourse}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
               currentUser
                 ? 'bg-emerald-500/15 hover:bg-emerald-500/25 border-emerald-500/40 text-emerald-300 shadow-sm shadow-emerald-500/10'

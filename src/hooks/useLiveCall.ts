@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Pattern } from '../types';
 import { getUserApiKey } from '../utils/storage';
+import { buildPatternLiveInstruction } from '../utils/aiPrompts';
 import { GoogleGenAI, Modality } from '@google/genai';
 
 export interface LiveChatMessage {
@@ -262,7 +263,7 @@ export function useLiveCall(onRequireApiKey?: () => void) {
   }, [clearAudioQueue]);
 
   // Start Real-Time Live Conversation (Gemini Live API)
-  const startCall = useCallback(async (currentPattern?: Pattern) => {
+  const startCall = useCallback(async (currentPattern?: Pattern, sourceLang: string = "Bengali", targetLang: string = "English") => {
     try {
       setConnectionStatus('connecting');
       setErrorMessage('');
@@ -308,24 +309,7 @@ export function useLiveCall(onRequireApiKey?: () => void) {
       });
       mediaStreamRef.current = stream;
 
-      const pId = currentPattern?.id || 1;
-      const struct = currentPattern?.structure || "Subject + want(s) + to + Verb";
-      const meaning = currentPattern?.bengaliMeaning || "কেউ কোনো কিছু করতে চায়";
-      const topic = currentPattern?.speakingTask?.topic || "Daily English Conversation";
-      const sampleEn = currentPattern?.sentenceBuilding?.[0]?.en || "I want to speak in English fluently.";
-      const sampleBn = currentPattern?.sentenceBuilding?.[0]?.bn || "আমি সাবলীলভাবে ইংরেজিতে কথা বলতে চাই।";
-
-      const systemInstruction = `You are "Air", an enthusiastic, ultra-natural spoken English partner and tutor on the "Dovashi" app.
-CURRENT LESSON: Level #${pId} — Structure: "${struct}" (${meaning}).
-TOPIC: "${topic}".
-SAMPLE SENTENCE: "${sampleEn}" (${sampleBn}).
-
-CONVERSATION PRINCIPLES:
-1. Speak in an authentic, friendly voice just like a real phone call with an English coach.
-2. Keep responses SHORT, spontaneous, and conversational (1-2 sentences maximum per turn) so the user has lots of speaking time.
-3. You can speak primarily in natural English and warmly intersperse encouraging Bengali phrases ("দারুণ!", "খুব সুন্দর!", "বলো আমি শুনছি") just like a native bilingual friend.
-4. If the user makes a grammar mistake with "${struct}", warmly give the correct sentence and ask them to try saying it.
-5. Keep the conversation going by asking an easy question!`;
+      const systemInstruction = buildPatternLiveInstruction(sourceLang, targetLang, currentPattern);
 
       // 3. Audio Chunk Playback Function (24kHz PCM from Gemini Live)
       const playAudioChunk = (base64Data: string) => {

@@ -1,7 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Navbar } from './components/Navbar';
-import { CourseSelectionScreen } from './components/CourseSelectionScreen';
-import { COURSES } from './data/courses';
 import { RoadmapMap } from './components/RoadmapMap';
 import { LevelLearningView } from './components/LevelLearningView';
 import { ApiKeyModal } from './components/ApiKeyModal';
@@ -86,12 +84,6 @@ export default function App() {
     return allPatterns.find(p => p.id === currentLevelId) || allPatterns[0];
   }, [allPatterns, currentLevelId]);
 
-  const activeCourse = COURSES.find(c => c.id === stats.currentCourseId) || COURSES[0];
-  const handleJoinCourse = (courseId: string) => {
-    const newStats = { ...stats, currentCourseId: courseId, joinedCourseIds: [...(stats.joinedCourseIds || []), courseId] };
-    setStats(newStats);
-    saveUserStats(newStats);
-  };
   const handleOpenApiKeyModal = useCallback(() => {
     setIsApiKeyModalOpen(true);
   }, []);
@@ -207,18 +199,7 @@ export default function App() {
       </div>
 
       {/* Top Persistent Header */}
-      {!stats.currentCourseId ? (
-        <div className="flex-1 z-10 relative">
-          <CourseSelectionScreen onJoinCourse={handleJoinCourse} />
-        </div>
-      ) : (
-        <>
       <Navbar
-        onChangeCourse={() => {
-          const newStats = { ...stats, currentCourseId: undefined };
-          setStats(newStats);
-          saveUserStats(newStats);
-        }}
         stats={stats}
         totalLevels={300}
         hasApiKey={hasApiKey}
@@ -269,15 +250,13 @@ export default function App() {
             connectionStatus={connectionStatus}
             errorMessage={errorMessage}
             messages={messages}
-            onStartCall={(pattern) => startCall(pattern, activeCourse.sourceLanguage, activeCourse.targetLanguage)}
+            onStartCall={startCall}
             onStopCall={stopCall}
             onSendManualMessage={sendManualMessage}
           />
         )}
       </main>
 
-      </>
-      )}
       {/* API Key Modal */}
       <ApiKeyModal
         isOpen={isApiKeyModalOpen}
