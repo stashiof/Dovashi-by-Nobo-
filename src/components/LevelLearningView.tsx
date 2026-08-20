@@ -869,6 +869,15 @@ export const LevelLearningView: React.FC<LevelLearningViewProps> = ({
                 />
               </div>
 
+              {callActive && (
+                <div className="absolute top-4 right-4 bg-slate-900/80 border border-slate-700/50 rounded-xl px-3 py-1.5 flex flex-col items-end gap-0.5 text-xs animate-fade-in shadow-lg">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    <span className="text-slate-200 font-bold font-mono">লাইভ সেশন চলছে</span>
+                  </div>
+                  <span className="text-amber-400/80 text-[10px] font-semibold mt-1 max-w-[120px] text-right leading-tight">API একাউন্ট লিমিট: ফ্রি টিয়ারে প্রতিদিন ১৫-২০ মিনিট</span>
+                </div>
+              )}
               {/* Live Subtitle Caption */}
               {callActive && currentSubtitle && (
                 <div className="max-w-lg text-center bg-[#0a0f1d]/95 border border-pink-500/30 px-5 py-3 rounded-2xl text-sm text-slate-200 shadow-xl animate-fade-in">
@@ -916,7 +925,7 @@ export const LevelLearningView: React.FC<LevelLearningViewProps> = ({
                   >
                     <Mic className="w-5 h-5" />
                     <span>
-                      {connectionStatus === 'connecting' ? 'সংযোগ হচ্ছে...' : 'লাইভ স্পিকিং শুরু করুন'}
+                      {connectionStatus === 'connecting' ? 'কলিং... 📞' : 'লাইভ স্পিকিং শুরু করুন'}
                     </span>
                   </button>
                 ) : (

@@ -98,6 +98,46 @@ export function useLiveCall(onRequireApiKey?: () => void) {
   const hasSpokenVoiceRef = useRef<boolean>(false);
   const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isProcessingTurnRef = useRef<boolean>(false);
+  
+  // Ringing Tone Refs
+  const ringIntervalRef = useRef<any>(null);
+  const ringGainRef = useRef<GainNode | null>(null);
+  const playRingTone = useCallback(() => {
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      const ctx = new AudioCtx();
+      const play = () => {
+        const osc1 = ctx.createOscillator();
+        const osc2 = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc1.frequency.value = 440;
+        osc2.frequency.value = 480;
+        gain.gain.value = 0.05;
+        osc1.connect(gain);
+        osc2.connect(gain);
+        gain.connect(ctx.destination);
+        osc1.start();
+        osc2.start();
+        setTimeout(() => {
+          try { osc1.stop(); osc2.stop(); } catch(e){}
+        }, 2000);
+        ringGainRef.current = gain;
+      };
+      play();
+      ringIntervalRef.current = setInterval(play, 4000);
+    } catch(e){}
+  }, []);
+  
+  const stopRingTone = useCallback(() => {
+    if (ringIntervalRef.current) {
+      clearInterval(ringIntervalRef.current);
+      ringIntervalRef.current = null;
+    }
+    if (ringGainRef.current) {
+      try { ringGainRef.current.gain.value = 0; } catch(e){}
+    }
+  }, []);
+
 
   // Stop pending audio sources
   const clearAudioQueue = useCallback(() => {
@@ -165,6 +205,7 @@ export function useLiveCall(onRequireApiKey?: () => void) {
 
     setCallActive(false);
     setConnectionStatus('disconnected');
+      stopRingTone();
     setTutorState('idle');
     setAudioLevel(0);
     setUserSpeaking(false);
@@ -266,6 +307,7 @@ export function useLiveCall(onRequireApiKey?: () => void) {
   const startCall = useCallback(async (currentPattern?: Pattern, sourceLang: string = "Bengali", targetLang: string = "English") => {
     try {
       setConnectionStatus('connecting');
+      playRingTone();
       setErrorMessage('');
       setMessages([]);
       isCallActiveRef.current = true;
@@ -278,6 +320,7 @@ export function useLiveCall(onRequireApiKey?: () => void) {
       if (!userApiKey) {
         if (onRequireApiKey) onRequireApiKey();
         setConnectionStatus('error');
+      stopRingTone();
         setErrorMessage("রিয়েল-টাইম লাইভ কথা বলতে অনুগ্রহ করে আপনার Gemini API Key যুক্ত করুন।");
         isCallActiveRef.current = false;
         return;
@@ -438,16 +481,20 @@ export function useLiveCall(onRequireApiKey?: () => void) {
 
       liveSessionRef.current = session;
       setConnectionStatus('connected');
+      stopRingTone();
       setCallActive(true);
       setTutorState('speaking');
       setCurrentSubtitle("Air যুক্ত হয়েছে! কথা বলুন...");
 
       // 5. Initial Call Kickoff Greeting
+      const pId = currentPattern?.id || 1;
+      const struct = currentPattern?.structure || "Basic Introduction";
+      
       session.sendClientContent({
         turns: [{
           role: 'user',
           parts: [{
-            text: `[SYSTEM: Start the call for Level ${pId} (${struct}). Say a cheerful, energetic 1-sentence welcome in your natural voice and ask how the user is doing or what they want to practice!]`
+            text: `[SYSTEM: Start the call for Level ${pId} (${struct}). Speak ENTIRELY in Bengali! Say a cheerful, energetic 1-sentence welcome. Include a human-like non-verbal sound (like a sigh, *cough*, or "Umm...") and ask how the user is doing or what they want to practice!]`
           }]
         }],
         turnComplete: true
