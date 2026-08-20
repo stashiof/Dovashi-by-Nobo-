@@ -2,18 +2,16 @@ const { GoogleGenAI, Modality } = require('@google/genai');
 const ai = new GoogleGenAI({ apiKey: 'abc' });
 global.WebSocket = require('ws');
 async function run() {
-  console.log('Starting...');
   try {
     const ws = await ai.live.connect({
-      model: 'gemini-3.1-flash-live-preview',
+      model: 'models/gemini-2.0-flash-exp',
       config: {
-        systemInstruction: 'hello'
+        systemInstruction: { parts: [{ text: "hello" }] }
       }
     });
-    console.log('Success connecting');
-    ws.close();
+    console.log('Success', ws);
   } catch (e) {
-    console.log('Caught Error:', e.message);
+    console.log('Error:', e.message);
   }
 }
 run();

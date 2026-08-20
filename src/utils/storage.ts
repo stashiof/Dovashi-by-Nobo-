@@ -21,6 +21,7 @@ export function getStoredUserStats(): UserStats {
     bookmarkedLevelIds: [],
     levelProgressMap: {},
     currentLevelId: 1,
+    currentCourseId: 'bn-en',
     userName: 'English Learner'
   };
 

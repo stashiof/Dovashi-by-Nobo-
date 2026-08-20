@@ -54,10 +54,17 @@ export default function App() {
             setHasApiKey(true);
           }
           if (profileRes.data.stats_data) {
-            saveUserStats(profileRes.data.stats_data);
-            setStats(profileRes.data.stats_data);
-            if (profileRes.data.stats_data.currentLevelId) {
-              setCurrentLevelId(profileRes.data.stats_data.currentLevelId);
+            // Merge with local to avoid losing currentCourseId if Supabase doesn't have it yet
+            const localStats = getStoredUserStats();
+            const mergedStats = {
+              ...profileRes.data.stats_data,
+              currentCourseId: profileRes.data.stats_data.currentCourseId || localStats.currentCourseId,
+              joinedCourseIds: profileRes.data.stats_data.joinedCourseIds || localStats.joinedCourseIds
+            };
+            saveUserStats(mergedStats);
+            setStats(mergedStats);
+            if (mergedStats.currentLevelId) {
+              setCurrentLevelId(mergedStats.currentLevelId);
             }
           }
         }
@@ -91,6 +98,10 @@ export default function App() {
     const newStats = { ...stats, currentCourseId: courseId, joinedCourseIds: [...(stats.joinedCourseIds || []), courseId] };
     setStats(newStats);
     saveUserStats(newStats);
+    if (currentUserRef.current) {
+      const apiKey = getUserApiKey();
+      syncUserDataToSupabase(currentUserRef.current, newStats, apiKey);
+    }
   };
   const handleOpenApiKeyModal = useCallback(() => {
     setIsApiKeyModalOpen(true);
