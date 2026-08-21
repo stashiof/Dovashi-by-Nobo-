@@ -402,7 +402,7 @@ export function useLiveCall(onRequireApiKey?: () => void) {
           speechConfig: {
             voiceConfig: {
               prebuiltVoiceConfig: {
-                voiceName: 'Aoede'
+                voiceName: 'Kore'
               }
             }
           },

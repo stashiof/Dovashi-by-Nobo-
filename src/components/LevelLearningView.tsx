@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
-import { AudioVisualizer } from './AudioVisualizer';
+import { NebulaCharacter } from './NebulaCharacter';
 import { getUserApiKey } from '../utils/storage';
 
 interface LevelLearningViewProps {
@@ -861,12 +861,7 @@ export const LevelLearningView: React.FC<LevelLearningViewProps> = ({
             {/* Live Audio Visualizer Stage */}
             <div className="bg-[#050811] border border-slate-800 rounded-3xl p-6 sm:p-8 flex flex-col items-center justify-center min-h-[320px] space-y-6 shadow-2xl relative">
               <div className="w-full max-w-md">
-                <AudioVisualizer 
-                  audioLevel={audioLevel}
-                  tutorState={tutorState}
-                  callActive={callActive}
-                  userSpeaking={userSpeaking}
-                />
+                <NebulaCharacter tutorState={tutorState} audioLevel={audioLevel} />
               </div>
 
               {callActive && (

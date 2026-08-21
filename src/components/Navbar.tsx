@@ -12,8 +12,7 @@ interface NavbarProps {
   hasApiKey: boolean;
   onOpenApiKeyModal: () => void;
   currentUser: User | null;
-  onChangeCourse?: () => void;
-  onOpenAuthSyncModal,
+  onOpenAuthSyncModal?: () => void;
   onChangeCourse: () => void;
 }
 
@@ -90,8 +89,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* 🟢 Emerald / Jade Profile & Auth Button */}
           <button
             id="navbar-auth-sync-btn"
-            onClick={onOpenAuthSyncModal,
-  onChangeCourse}
+            onClick={onOpenAuthSyncModal}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
               currentUser
                 ? 'bg-emerald-500/15 hover:bg-emerald-500/25 border-emerald-500/40 text-emerald-300 shadow-sm shadow-emerald-500/10'
